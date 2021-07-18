@@ -111,13 +111,17 @@ struct mesh
 		#  Every rectangle is in 1-1 correspondence with bottom left corner
 		nrects = (ntics-1)^2
 		rects = Matrix{Int64}(undef,4,nrects)
+		gen = [0,1];
 		for k=1:nrects
-			# Extract rectangular indices of bottom left node
+			# Grab rectangular indices of bottom left node
 			# (matching ndid[:,⋅] in [i;j] form)
-			#  k = (j-1)*(ntics-1) + i for 1<=i,j<=ntics-1
-			#  => k-1 = j¯*(ntics-1)+i¯ for 0<=i¯,j¯<ntics-1
-			j = 1 + Int64(floor((k-1)/(ntics-1)));
-			i = 1 + (k-1-(j-1)*(ntics-1));
+			if gen[1] != ntics-1
+				gen[1] += 1
+			else
+				gen[1] = 1;
+				gen[2] += 1
+			end
+			i=gen[1]; j=gen[2];
 			
 			# Compute (i,j) position in ntics^2 ordering
 			# (ie compute ⋅)
@@ -162,9 +166,9 @@ function mbrtri(t::tri,pt::Vector{Float64};flagbx::Bool=false)
 	if !flagbx
 		# Compute barycentric coordinates
 		b = t.Btr*[1.;pt];
-		nneg = sum(b.<0);
+		nneg = Float64(sum(b.<0));
 
-		return nneg == 0
+		return nneg == 0.
 	else
 		# Test if belongs to bounding box
 		return (t.urg[1] <= pt[1])&(t.urg[1] >= pt[1])&
@@ -184,11 +188,16 @@ function mbrtri(m::mesh,q::Matrix{Float64})
 	
 	# Find triangles containing point
 	pos = repeat([-1],outer=(nq,));
+	gen = [1,0];
 	for k=1:nq*nelms
-		# k = (i-1)*nq+j for 1<=i<=nq and 1<=j<=nelms
-		#  => k-1 = (i-1)*nq+(j-1)
-		i = 1 + Int64(floor((k-1)/nq));
-		j = 1 + (k-1-(i-1)*nq);
+		# 1<=i<=nq and 1<=j<=nelms
+		if gen[2] != nelms
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
+		i = gen[1]; j = gen[2];		
 		
 		if mbrtri(m.elms[j],q[:,i];flagbx=true)
 			pos[i] = mbrtri(m.elms[j],q[:,i]) ? j : -1;
@@ -210,42 +219,70 @@ function mbrtri(m::mesh,q::Vector{Float64})
 	return pos[1]
 end
 
-# eval
+# besttri
 """
-Evaluate a 1d linear interpolant spline at given query points
-c:: gives nodal coefficient values in the order of the nodes of m
-m:: mesh over which evaluating interpolant
-q:: 2 x nq array that stores query points
+Rank triangles closest to the query point by the negativity of their 
+barycentric coordinates
 """
-function eval(c::Vector{Float64},m::mesh,q::Matrix{Float64})
+function besttri(m::mesh,q::Matrix{Float64})
 	nq = size(q)[2];
+	nelms = length(m.elms);
 
-	# Find triangles containing query points
-	pos = mbrtri(m,q);
-
-	# Evaluate spline at queries
-	val = Vector{Float64}(undef,nq);
-	for k=1:nq
-		if pos[k] == -1
-			val[k] = NaN;
-			continue
+	# Find triangles best containing point
+	pos = Vector{Int64}(undef,nq);
+	gen = [1,0];
+	bestval = -Inf;
+	bestid = -1;
+	for k=1:nq*nelms
+		# 1<=i<=nq and 1<=j<=nelms
+		if gen[2] != nelms
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
+		i = gen[1]; j = gen[2];
+		
+		# Reset rankings if a new query point
+		if j == 1
+			bestval = -Inf;
+			bestid = -1;
 		end
 
-		tri = m.elms[pos[k]];
-		nds = tri.ndid;
-		b = tri.Btr*[1;q[:,k]];
-		cval = [c[nds[1]],c[nds[2]],c[nds[3]]];
+		# Continue if earlier an exact match was found
+		if bestval == Inf
+			continue
+		end
+		
+		# Test for membership in triangle
+		bq = m.elms[j].Btr*[1.;q[:,i]];
+		val = 1. *sum((bq.<0).*bq);
+		if val == 0.
+			bestid = j;
+			pos[i] = bestid;
+			bestval = Inf;
+			continue
+		elseif val > bestval
+			bestval = val;
+			bestid = j;
+		end
 
-		val[k] = sum(cval.*b);
+		# Store best triangle if finishing with query point
+		if j == nelms
+			pos[i] = bestid;
+		end
 	end
-end
-"""
-Same as other eval except because working with singple point returns 
-Float64 not array
-"""
-function eval(c::Vector{Float64},m::mesh,q::Vector{Float64})
-	qram = reshape(q,outer=(2,1));
-	val = eval(c,m,qram);
 
-	return val[1]
+	return pos
 end
+"""
+Same as other besttri except because query is a vector, returns a single 
+integer rather than an array
+"""
+function besttri(m::mesh,q::Vector{Float64})
+	qram::Matrix{Float64} = reshape(q,(2,1));
+	pos = besttri(m,qram);
+
+	return pos[1]
+end
+
