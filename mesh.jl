@@ -21,7 +21,9 @@ struct node
 		
 		# Find ∂pt
 		pos = pt[1] <= pt[2] ? 1 : 2 # coord det ∂pt
-		∂pt = pt .- pt[pos];
+		∂pt = Vector{Float64}(undef,2);
+		∂pt[pos] = 0.
+		∂pt[pos==1 ? 2 : 1] = maximum(pt) - minimum(pt);
 
 		# Compute δl
 		δl = norm(pt-∂pt);
@@ -79,17 +81,23 @@ struct mesh
 	urg::Vector{Float64}
 	trg::Vector{Float64}
 	ntics::Int64
-	uaxis::Vector{Float64}
+	saxis::Vector{Float64}
 	taxis::Vector{Float64}
+	χrg::Vector{Float64}
+	χaxis::Vector{Float64}
 
 	function mesh(urg::Vector{Float64},trg::Vector{Float64},ntics::Int64)
-		# Generate u-t axes tics
-		uaxis = convert(Vector,LinRange(urg[1],urg[2],ntics));
+		# Compute χrg
+		χrg = [0.,sqrt(2)*minimum([urg[2],trg[2]])];
+
+		# Generate s-t axes tics
+		saxis = convert(Vector,LinRange(urg[1],urg[2],ntics));
 		taxis = convert(Vector,LinRange(trg[1],trg[2],ntics));
+		χaxis = convert(Vector,LinRange(χrg[1],χrg[2],ntics));
 
 		## Build vector of nodes
 		# Generate node coordinates
-		ndu = repeat(reshape(uaxis,ntics,1),outer=(1,ntics));
+		ndu = repeat(reshape(saxis,ntics,1),outer=(1,ntics));
 		ndt = repeat(reshape(taxis,1,ntics),outer=(ntics,1));
 
 		ndpts = convert(Matrix,transpose([ndu[:] ndt[:]]));
@@ -149,7 +157,7 @@ struct mesh
 		end
 		elms = tris[:];
 
-		return new(nd,elms,urg,trg,ntics,uaxis,taxis)
+		return new(nd,elms,urg,trg,ntics,saxis,taxis,χrg,χaxis)
 	end
 end
 

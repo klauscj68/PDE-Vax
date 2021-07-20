@@ -1,58 +1,6 @@
 # Collection of scripts for discretizing functions and solutions into
 # various spline forms. Requires mesh.jl
 
-# finterp
-"""
-Structure for interpolating and storing α,β,γ,λ on the rectangular mesh. 
-These functions are defined in the inner constructor. The functions are
-stored as a vector of nodal values ordered like the nodes of mesh.
-"""
-struct finterp 
-	α::Vector{Float64}
-	β::Vector{Float64}
-	γ::Vector{Float64}
-	λ::Vector{Float64}
-	fˢ::Vector{Float64}
-	fⁱ::Vector{Float64}
-
-	function finterp(mymesh::mesh)
-		nnd = length(mymesh.nd);
-
-		α = Vector{Float64}(undef,nnd);
-		β = Vector{Float64}(undef,nnd);
-		γ = Vector{Float64}(undef,nnd);
-		λ = Vector{Float64}(undef,nnd);
-		fˢ= Vector{Float64}(undef,nnd);
-		fⁱ= Vector{Float64}(undef,nnd);
-
-		for i=1:nnd
-			s,t = mymesh.nd[i];
-			α[i] = maximum([(365. -t)/365.,0.]);
-			β[i] = .1*s;
-			γ[i] = .05*t;
-			λ[i] = .05*s*t;
-			fˢ[i] = 1.;
-			fⁱ[i] = 1.;
-		end
-
-		return new(α,β,γ,λ,fˢ,fⁱ)
-	end
-		
-end
-
-# yspl
-"""
-Structure for storing solution splines via their boundary data
-sol:: is either :yˢ,:yᵛ,:yⁱ depending on the case
-∂s:: stores nodal values of s-axis boundary values (matching a mesh)
-∂t:: stores nodal values of t-axis boudary values (matching a mesh)
-"""
-struct yspl
-	sol::Symbol
-	∂s::Vector{Float64}
-	∂t::Vector{Float64}
-end
-
 # quad1d
 """
 Output the Guassian quadrature weights and point locations for numerical
@@ -81,6 +29,60 @@ function quad1d(n::Int64=6)
 
 	gaussqd = Dict{Symbol,Vector{Float64}}(:w=>w,:p=>p);
 	return gaussqd
+end
+
+# myfindfirst
+"""
+A binary search routine for finding the first time point greater than the query point
+among a given sequence of times. Writing because the findfirst routine is proving to
+be expensive in Julia. Routine uses that tpts is ordered least to great. It's 
+assumed teval is strictly contained in the interval partitioned by tpts.
+"""
+function myfindfirst(tpts::Array{Float64,1},teval::Float64)
+	ntpts = length(tpts);
+	
+	# Find the smallest interval of type (,] containing point.
+	idx = [1,ntpts];
+	flag_fd = false;
+
+	while !flag_fd
+		mid = ceil(Int64,.5*idx[1]+.5*idx[2]);
+		if mid == idx[2]
+			flag_fd = true;
+		elseif teval <= tpts[mid]
+			idx[2] = mid;
+		else
+			idx[1] = mid;
+		end
+	end
+
+	return idx[2]
+end
+
+#%% myinterp
+"""
+A simple 1d linear interpolation scheme to extend a discrete data set to an interval
+
+vals: ntpts x 2 array of floats. First column is time, second is function value
+teval: time point at which to evaluate
+"""
+function myinterp(tpts::Array{Float64,1},ypts::Array{Float64,1},teval::Float64)
+	
+	if teval <= tpts[1]
+		val = ypts[1];
+	elseif teval >= tpts[end]
+		val = ypts[end];
+	else
+		pos = myfindfirst(tpts,teval);
+		t1,t2 = tpts[pos-1:pos];
+		s = (teval-t1)/(t2-t1);
+		v1 = ypts[pos-1];
+		v2 = ypts[pos];
+		val = v1+s*(v2-v1);
+	end
+
+	return val
+
 end
 
 # eval
@@ -126,22 +128,34 @@ function eval(c::Vector{Float64},mymesh::mesh,q::Vector{Float64})
 	return val[1]
 end
 
-# ∫fds
+# ∫fdτ
 """
-Compute the integral of mesh-spline interpolant from saxis[1] to saxis[end]
-broken up into elements according to the interior points of saxis.
+Compute the 1d integral of mesh-spline interpolant along an unnormalized
+direction u. 
+c:: nodal values wrt to mymesh of integrand
+mymesh:: mesh structure encoding domain geometry
+u:: direction along which integrating
+uaxis:: element discretization of ∫ᵘᶠᵤᵢspl(pₒ+τu)dτ where uaxis[i],uaxis[i+1]
+        defines an element. Within an element the integration is done by 
+	quadrature
+pₒ:: the base point for directional increment
+n:: optional arg, number of quadrature points within an element
+gaussqd:: option argument specifying the quadrature rule so that weights dont 
+          have to be regenerated each call. Should be consistent with n when
+	  supplied
 """
-function ∫fds(c::Vector{Float64},mymesh::mesh,
-	      saxis::Vector{Float64},tval::Float64;
+function ∫fdτ(c::Vector{Float64},mymesh::mesh,
+	      u::Vector{Float64},uaxis::Vector{Float64},pₒ::Vector{Float64};
 	      n::Int64=6,gaussqd::Dict{Symbol,Vector{Float64}}=quad1d(n))
-	@assert length(saxis) >= 2 "saxis must define an interval"
+	@assert length(uaxis) >= 2 "uaxis must define an interval"
 	# Evaluate spline at quadrature points
-	nelms = length(saxis) -1;
+	nelms = length(uaxis) -1;
 	ceval = Matrix{Float64}(undef,n,nelms);
 	for i=1:nelms
-		pts = (1. .-gaussqd[:p])*saxis[i]+gaussqd[:p]*saxis[i+1];
-		ram = [reshape(pts,(1,n));
-		       repeat([tval],outer=(1,n))];
+		# Virtual 1d points along directional axis of u
+		pts = (1. .-gaussqd[:p])*uaxis[i]+gaussqd[:p]*uaxis[i+1];
+		# Points in physical space
+		ram = pₒ.+u*reshape(pts,(1,n));
 
 		ceval[:,i] = eval(c,mymesh,ram);
 	end
