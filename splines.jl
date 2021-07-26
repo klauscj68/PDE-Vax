@@ -31,34 +31,6 @@ function quad1d(n::Int64=6)
 	return gaussqd
 end
 
-# myfindfirst
-"""
-A binary search routine for finding the first time point greater than the query point
-among a given sequence of times. Writing because the findfirst routine is proving to
-be expensive in Julia. Routine uses that tpts is ordered least to great. It's 
-assumed teval is strictly contained in the interval partitioned by tpts.
-"""
-function myfindfirst(tpts::Array{Float64,1},teval::Float64)
-	ntpts = length(tpts);
-	
-	# Find the smallest interval of type (,] containing point.
-	idx = [1,ntpts];
-	flag_fd = false;
-
-	while !flag_fd
-		mid = ceil(Int64,.5*idx[1]+.5*idx[2]);
-		if mid == idx[2]
-			flag_fd = true;
-		elseif teval <= tpts[mid]
-			idx[2] = mid;
-		else
-			idx[1] = mid;
-		end
-	end
-
-	return idx[2]
-end
-
 #%% myinterp
 """
 A simple 1d linear interpolation scheme to extend a discrete data set to an interval

@@ -294,3 +294,52 @@ function besttri(m::mesh,q::Vector{Float64})
 	return pos[1]
 end
 
+# myfindfirst
+"""
+A binary search routine for finding the first time point greater than the query point
+among a given sequence of times. Writing because the findfirst routine is proving to
+be expensive in Julia. Routine uses that tpts is ordered least to great. It returns 
+the endpoints when teval falls outside.
+"""
+function myfindfirst(tpts::Array{Float64,1},teval::Float64)
+	ntpts = length(tpts);
+	
+	if teval >= tpts[end];
+		return length(tpts);
+	elseif teval <= tpts[1]
+		return 1;
+	end
+
+	# Find the smallest interval of type (,] containing point.
+	idx = [1,ntpts];
+	flag_fd = false;
+
+	while !flag_fd
+		mid = ceil(Int64,.5*idx[1]+.5*idx[2]);
+		if mid == idx[2]
+			flag_fd = true;
+		elseif teval <= tpts[mid]
+			idx[2] = mid;
+		else
+			idx[1] = mid;
+		end
+	end
+
+	return idx[2]
+end
+
+#∫dom
+"""
+Given a set of axes points marking element divisions and the endpoints 
+over which wish to integrate build element divisions that reflect the 
+domain ends
+"""
+function ∫dom(elms::Vector{Float64},rg::Vector{Float64})
+	apos = myfindfirst(elms,rg[1]);
+	bpos = myfindfirst(elms,rg[2]) - 1;
+
+	dom = vcat( rg[1] < elms[apos] ? rg[1] : Vector{Float64}[],
+		    elms[apos:bpos],
+		    rg[2] > elms[bpos] ? rg[2] : Vector{Float64}[] );
+	return dom
+end
