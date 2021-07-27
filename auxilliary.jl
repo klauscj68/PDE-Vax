@@ -2,6 +2,13 @@
 using DifferentialEquations
 
 #%% Custom Structures
+# VecVw
+"""
+Convenient alias to accomodate vector or view of vector input
+"""
+VecVw = Union{Vector{Float64},
+	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
+
 # Domain
 """
 Structure for declaring the geometry for the initial value problem and its
@@ -14,6 +21,7 @@ struct Domain
 	saxis::Vector{Float64} # Location of saxis nodes along srg
 	taxis::Vector{Float64} # Location of taxis nodes along trg
 	χaxis::Vector{Float64} # (mirrored taxis) and saxis combined
+	nnd::Int64
 
 	function Domain(srg::Vector{Float64},trg::Vector{Float64},
 			nelm::Int64)
@@ -22,8 +30,9 @@ struct Domain
 		taxis = convert(Vector,LinRange(trg[1],trg[2],nelm));
 
 		χaxis = [saxis;taxis[2:end]];
+		nnd = length(χaxis);
 
-		return new(srg,trg,nelm,saxis,taxis,χaxis)
+		return new(srg,trg,nelm,saxis,taxis,χaxis,nnd)
 	end
 end
 
@@ -67,7 +76,7 @@ among a given sequence of times. Writing because the findfirst routine is provin
 be expensive in Julia. Routine assumes that tpts is ordered least to great. It returns 
 the endpoints when teval falls outside.
 """
-function myfindfirst(tpts::Vector{Float64},teval::Float64)
+function myfindfirst(tpts::VecVw,teval::Float64)
 	ntpts = length(tpts);
 	
 	if teval >= tpts[end];
@@ -101,7 +110,7 @@ A simple 1d linear interpolation scheme to extend a discrete data set to an inte
 vals: ntpts x 2 array of floats. First column is time, second is function value
 teval: time point at which to evaluate
 """
-function myinterp(tpts::Vector{Float64},ypts::Vector{Float64},teval::Float64)
+function myinterp(tpts::VecVw,ypts::VecVw,teval::Float64)
 	
 	if teval <= tpts[1]
 		val = ypts[1];
@@ -125,8 +134,7 @@ end
 """
 Map from (χ,τ) coordinates to (s,t) coordinates
 """
-function Fχτ(pt::Union{Vector{Float64},
-		       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}})
+function Fχτ(pt::VecVw)
 	χ = pt[1]; τ = pt[2];
 
 	st = [.5*χ+.5*abs(χ) + 1/sqrt(2)*τ,
@@ -150,8 +158,7 @@ end
 """
 Map from (s,t) coordinates to (χ,τ) coordinates
 """
-function Fst(pt::Union{Vector{Float64},
-                 SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}})
+function Fst(pt::VecVw)
 	s = pt[1]; t = pt[2];
 
 	χτ = [s - t,
@@ -180,20 +187,18 @@ Returns a Vector{Matrix{Float64}} where [i][:,j] entry records location of
 jᵗʰ quadrature point within iᵗʰ element.
 
 Note: if nelm != 1, then extra Jacobian factor (x 1/nelm) will need to be
-included in quadrature weights for element length. This method sets the default 
-nelm value used everywhere throughout the code.
+included in quadrature weights for element length. 
 """
-function Gaussb(χτ::Union{Vector{Float64},
-		    SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}},
+function Gaussb(χτ::VecVw,
 		dom::Domain;
 		gaussqd::Dict{Symbol,Vector{Float64}}=quad1d(),
-		nelm::Int64=1)
+		nelm::Int64)
 	t = Fχτ(χτ)[2]; L = dom.srg[2];
 
 	npts = length(gaussqd[:b]);
 	
 	mesh = LinRange(0.,1.,nelm);
-	pts = Vector{Matrix{Float64}(2,npts)}(undef,nelm);
+	pts = Vector{Matrix{Float64}}(undef,nelm);
 	@inbounds for i=1:nelm
 		pts[i] = Matrix{Float64}(undef,2,npts);
 	end
@@ -231,3 +236,68 @@ function Gaussb(χτ::Matrix{Float64},dom::Domain;
 
 	return bpts
 end
+
+#%% Evaluation
+"""
+Given nodal values c over nodes dom.χaxis in [-T,L], evaluate interpolant
+spline at query point χ.  You are thinking of c(τ) already evaluated for a
+specific τ and now you are left to evaluate the space component.
+"""
+function eval(c::VecVw,χ::Float64,dom::Domain)
+	@assert length(c) == dom.nnd "length of c does not match nodal dof"
+	val = myinterp(dom.χaxis,c,χ);
+
+	return val
+end
+function eval(c::VecVw,χs::VecVw,dom::Domain)
+	npts = length(χs);
+	
+	vals = Vector{Float64}(undef,npts);
+	@inbounds for i=1:npts
+		vals[i] = eval(c,χs[i],dom);
+	end
+
+	return vals
+end
+function eval(c::VecVw,dom::Domain,χ::Float64)
+	val = eval(c,χ,dom);
+end
+function eval(c::VecVw,dom::Domain,χs::VecVw)
+	vals = eval(c,χs,dom);
+end
+
+#%% Line Integration
+# pullb∫fds!
+"""
+Given a forcing term encoded as a time series of nodal values f in the 
+(χ,τ) coordinate plane compute its corresponding pullback line integral:
+∫ᴸ₀f(s,t)ds 
+at the pt χτ = (χ,τ). The key is to write this integral in terms of f\circ Fχτ
+since these are the quantities described by the change of coordinates ODE 
+sytem.
+
+f:: Vector of time series nodal values along dom.χaxis
+τs:: Series of τ-values for which f values correspond
+χτ:: gives χ,τ values at which pulling back integral
+gaussqd:: output of quad1d for computing gaussian quadrature
+nelm:: Number of subelements for discretizing the [0,1] reference element ∫
+       This method sets the default nelm value used everywhere throughout 
+       the code.
+ramGb:: Optional input that can be used to preallocate an array that is rewritten
+        at every iteration of the integration and to not have this memory be
+	reallocated each time routine is called. This is only mutated argument.
+"""
+function pullb∫fds!(f::Vector{VecVw},τs::VecVw,pt::VecVw,
+		   dom::Domain;
+		   gaussqd = quad1d(),
+		   nelm::Int64=1,
+		   ramGb::Vector{Matrix{Float64}}=Vector{Matrix{Float64}}(undef,nelm))
+	χ = pt[1]; τ = pt[2]; δL = dom.saxis[2]/nelm;	
+	
+	# Integrate over element divisions of the [0,1] reference element
+	∫f = 0. 
+	for i=1:nelm
+		# extract the gaussian quadrature points  
+		
+end
+
