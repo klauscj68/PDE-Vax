@@ -1,5 +1,4 @@
-## Suite for solving the vaccination PDE system
-using DifferentialEquations
+## Suite of ancillary routines for solving the vaccination PDE system
 
 #%% Custom Structures
 # VecVw
@@ -7,7 +6,7 @@ using DifferentialEquations
 Convenient alias to accomodate vector or view of vector input
 """
 VecVw = Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
+	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
 
 # Domain
 """
@@ -178,34 +177,38 @@ function Fst(pts::Matrix{Float64})
 	return χτs
 end
 
-# Gaussb
+# Gaussb!
 """
 Map the gaussian quadrature points in [0,1] to their evaluation point in 
 the (χ,τ) plane. These terms come from the pullback of the righthand side
 of the system to (χ,τ) coordinates and accordingly depend on those parameters.
 Returns a Vector{Matrix{Float64}} where [i][:,j] entry records location of
-jᵗʰ quadrature point within iᵗʰ element.
+jᵗʰ quadrature point in (χ,τ)-plane within iᵗʰ element.
+
+For memory allocation reasons the results overwrite and are stored into the
+Gbpts argument.
 
 Note: if nelm != 1, then extra Jacobian factor (x 1/nelm) will need to be
 included in quadrature weights for element length. 
 """
-function Gaussb(χτ::VecVw,
-		dom::Domain;
-		gaussqd::Dict{Symbol,Vector{Float64}}=quad1d(),
-		nelm::Int64)
+function Gaussb!(χτ::VecVw,
+		dom::Domain,
+		nelm::Int64,
+		Gbpts::Vector{Matrix{Float64}};
+		gaussqd::Dict{Symbol,Vector{Float64}}=quad1d())
 	t = Fχτ(χτ)[2]; L = dom.srg[2];
 
-	npts = length(gaussqd[:b]);
+	npts = length(gaussqd[:w]);
 	
 	mesh = LinRange(0.,1.,nelm);
-	pts = Vector{Matrix{Float64}}(undef,nelm);
-	@inbounds for i=1:nelm
-		pts[i] = Matrix{Float64}(undef,2,npts);
-	end
+	@assert length(Gbpts) == nelm "Gbpts must match number of elements"
+	for i=1:nelm	
+		@assert size(Gbpts[i]) == (2,npts) "pts at element must match number of quad pts"
+	end	
 	
 	gen = [1,0];
 	@inbounds for k=1:npts*nelm
-		# cycle generator
+		# cycle generator: i is element j indexes loc in (χ,τ) 
 		if gen[2] != npts
 			gen[2] += 1
 		else
@@ -218,23 +221,10 @@ function Gaussb(χτ::VecVw,
 		ν = mesh[i]*(1-gaussqd[:b][j]) + mesh[i+1]*gaussqd[:b][j];
 		
 		χeff = -t + L*ν;
-		pts[i][:,j] = [χeff,
+		Gbpts[i][:,j] = [χeff,
 			       1/sqrt(2)*χeff - 1/sqrt(2)*abs(χeff)+sqrt(2)*t];
 	end
 
-	return pts
-end
-function Gaussb(χτ::Matrix{Float64},dom::Domain;
-		gaussqd::Dict{Symbol,Vector{Float64}}=quad1d())
-	@assert size(χτ)[1] == 2 "pts must be two dimensional"
-	npts = size(χτ)[2];
-
-	bpts = Vector{Vector{Matrix{Float64}}}(undef,npts);
-	@inbounds for j=1:npts
-		bpts[j] = Gaussb(@view χτ[:,j],dom;gaussqd=gaussqd);
-	end
-
-	return bpts
 end
 
 #%% Evaluation
@@ -272,32 +262,63 @@ end
 Given a forcing term encoded as a time series of nodal values f in the 
 (χ,τ) coordinate plane compute its corresponding pullback line integral:
 ∫ᴸ₀f(s,t)ds 
-at the pt χτ = (χ,τ). The key is to write this integral in terms of f\circ Fχτ
+at the pt χτ = (χ,τ). The key is to write this integral in terms of fcirc Fχτ
 since these are the quantities described by the change of coordinates ODE 
 sytem.
 
 f:: Vector of time series nodal values along dom.χaxis
 τs:: Series of τ-values for which f values correspond
 χτ:: gives χ,τ values at which pulling back integral
-gaussqd:: output of quad1d for computing gaussian quadrature
 nelm:: Number of subelements for discretizing the [0,1] reference element ∫
-       This method sets the default nelm value used everywhere throughout 
-       the code.
-ramGb:: Optional input that can be used to preallocate an array that is rewritten
+Gbpts:: Input is used to preallocate an array that is rewritten
         at every iteration of the integration and to not have this memory be
 	reallocated each time routine is called. This is only mutated argument.
+gaussqd:: optional input for quad1d and computing gaussian quadrature
 """
-function pullb∫fds!(f::Vector{VecVw},τs::VecVw,pt::VecVw,
-		   dom::Domain;
-		   gaussqd = quad1d(),
-		   nelm::Int64=1,
-		   ramGb::Vector{Matrix{Float64}}=Vector{Matrix{Float64}}(undef,nelm))
-	χ = pt[1]; τ = pt[2]; δL = dom.saxis[2]/nelm;	
-	
-	# Integrate over element divisions of the [0,1] reference element
-	∫f = 0. 
-	for i=1:nelm
-		# extract the gaussian quadrature points  
-		
-end
+function pullb∫fds!(f::Vector{VecVw},τs::VecVw,χτ::VecVw,
+		   dom::Domain,
+		   nelm::Int64,
+		   Gbpts::Vector{Matrix{Float64}};
+		   gaussqd::Dict{Symbol,Vector{Float64}}=quad1d())
+	# Element Length needed to scale Gaussian quadrature
+	δL = dom.saxis[2]/nelm;	
 
+	# Extract gaussian quadrature points for this integration
+	npts = length(gaussqd[:w]);
+	Gaussb!(χτ,dom,nelm,Gbpts;gaussqd=gaussqd);	
+
+	# Integrate over element divisions of the [0,1] reference element
+	∫f = 0.
+	gen = [1,0];
+	@inbounds for k=1:nelm*npts
+		# cycle generator: i is element j is index of (χ,τ) gauss pt
+		if gen[2] != npts
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
+		i = gen[1]; j = gen[2];
+
+		# eval f at this gauss point
+		χ,τ = Gbpts[i][:,j];
+
+		#  interpolate time coefficients of f at time τ
+		if τ >= τs[end]
+			cnow = f[end];
+		elseif τ <= τs[1]
+			cnow = f[1];
+		else
+			pos = myfindfirst(τs,τ);
+			η = (τ-τs[pos-1])/(τs[pos]-τs[pos-1]);
+			cnow = (1-η)*f[pos-1]+η*f[pos];
+		end
+		#  interpolate space contribution at position χ
+		val = eval(cnow,χ,dom);
+
+		# accumulate into integral
+		∫f += δL*gaussqd[:w][j]*val;
+	end
+
+	return ∫f
+end

@@ -1,5 +1,5 @@
 ## File storing parameters and model equation terms
-# Should also have loaded vaxsolver.jl
+# Should also have loaded auxilliary.jl
 
 #%% Model function parameters
 # λ
@@ -9,9 +9,7 @@ Defaults to λ(s,t) but optional case argument can be used to instead
 compute λ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function λ(pt::Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
-		case::Symbol=:st)
+function λ(pt::VecVw;case::Symbol=:st)
 	
 	if case == :st
 		s = pt[1]; t = pt[2];
@@ -36,9 +34,7 @@ Defaults to β(s,t) but optional case argument can be used to instead
 compute β(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function β(pt::Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
-		case::Symbol=:st)
+function β(pt::VecVw;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -62,9 +58,7 @@ Defaults to α(s,t) but optional case argument can be used to instead
 compute α(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function α(pt::Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
-		case::Symbol=:st)
+function α(pt::VecVw;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -88,9 +82,7 @@ Defaults to γ(s,t) but optional case argument can be used to instead
 compute γ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function γ(pt::Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
-		case::Symbol=:st)
+function γ(pt::VecVw;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -114,9 +106,7 @@ Defaults to fˢ(s,t) but optional case argument can be used to instead
 compute fˢ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function fˢ(pt::Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
-		case::Symbol=:st)
+function fˢ(pt::VecVw;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -140,9 +130,7 @@ Defaults to fⁱ(s,t) but optional case argument can be used to instead
 compute fⁱ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function fⁱ(pt::Union{Vector{Float64},
-	       SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
-		case::Symbol=:st)
+function fⁱ(pt::VecVw;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
