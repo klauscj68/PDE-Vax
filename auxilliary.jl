@@ -5,8 +5,8 @@
 """
 Convenient alias to accomodate vector or view of vector input
 """
-VecVw = Union{Vector{Float64},
-	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}};
+Vw = SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true};
+VecVw = Union{Vector{Float64},Vw}; 
 
 # Domain
 """
@@ -275,7 +275,8 @@ Gbpts:: Input is used to preallocate an array that is rewritten
 	reallocated each time routine is called. This is only mutated argument.
 gaussqd:: optional input for quad1d and computing gaussian quadrature
 """
-function pullb∫fds!(f::Vector{VecVw},τs::VecVw,χτ::VecVw,
+function pullb∫fds!(f::Union{Vector{Vector{Float64}},Vector{Vw}},
+		   τs::VecVw,χτ::VecVw,
 		   dom::Domain,
 		   nelm::Int64,
 		   Gbpts::Vector{Matrix{Float64}};
