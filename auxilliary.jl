@@ -1,12 +1,19 @@
 ## Suite of ancillary routines for solving the vaccination PDE system
 
 #%% Custom Structures
-# VecVw
+# Aliases for Views and Vector of views
 """
 Convenient alias to accomodate vector or view of vector input
 """
-Vw = SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true};
+Vw = Union{
+	   SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # matrix slice
+	   SubArray{Float64, 1, Vector{Float64}, Tuple{UnitRange{Int64}}, true}, # vector slice
+	   SubArray{Float64, 1, Matrix{Float64}, Tuple{UnitRange{Int64}, Int64}, true} # vector of matrix slice 
+	   };
 VecVw = Union{Vector{Float64},Vw}; 
+VecVecVw = Union{Vector{Vector{Float64}},
+		 Vector{Vw},
+		 SubArray{Vector{Float64}, 1, Vector{Vector{Float64}}, Tuple{UnitRange{Int64}}, true}}; # vector of vector slice
 
 # Domain
 """
@@ -273,9 +280,12 @@ nelm:: Number of subelements for discretizing the [0,1] reference element ∫
 Gbpts:: Input is used to preallocate an array that is rewritten
         at every iteration of the integration and to not have this memory be
 	reallocated each time routine is called. This is only mutated argument.
+	It should be of a vector of size nelm with entries matrices of size 
+	2 x gaussqdpts. It's two entries per quad point because they lie in the 
+	(χ,τ) plane as a pullback of a horizontal in (s,t) decays in τ as χ < 0.
 gaussqd:: optional input for quad1d and computing gaussian quadrature
 """
-function pullb∫fds!(f::Union{Vector{Vector{Float64}},Vector{Vw}},
+function pullb∫fds!(f::VecVecVw,
 		   τs::VecVw,χτ::VecVw,
 		   dom::Domain,
 		   nelm::Int64,
