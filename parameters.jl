@@ -1,6 +1,44 @@
 ## File storing parameters and model equation terms
 # Should also have loaded auxilliary.jl
 
+#%% Model scalar parameters
+# data
+"""
+Dictionary storing model scalar parameters
+"""
+function data()
+	D = Dict{Symbol,Float64}();
+	
+	# Domain
+	#  Largest age
+	D[:L] = 85.;
+
+	#  Largest time
+	D[:T] = 85.;	
+
+	# Epidemic
+	#  Initial fraction vaccinated
+	D[:ρ] = .3;
+
+	# Numerical discretization
+	#  Number elements within [0.,T] and [0.,L.]
+	D[:nelm] = 2.;
+
+	#  Number of quadrature points within an element
+	D[:nqd] = 6.;
+
+	#  Final τ-time of integration
+	D[:τfin] = .2;
+
+	#   τ-downsample used to save the solution along integration
+	D[:δτ] = .1;
+
+	#   tolerances for ode integration
+	D[:atol] = 1e-6;
+	D[:rtol] = 1e-3;
+	
+end
+
 #%% Model function parameters
 # λ
 """

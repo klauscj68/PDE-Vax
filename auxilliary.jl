@@ -8,7 +8,7 @@ Convenient alias to accomodate vector or view of vector input
 Vw = Union{
 	   SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # matrix slice
 	   SubArray{Float64, 1, Vector{Float64}, Tuple{UnitRange{Int64}}, true}, # vector slice
-	   SubArray{Float64, 1, Matrix{Float64}, Tuple{UnitRange{Int64}, Int64}, true} # vector of matrix slice 
+	   SubArray{Float64, 1, Matrix{Float64}, Tuple{UnitRange{Int64}, Int64}, true} # vector slice of matrix slice 
 	   };
 VecVw = Union{Vector{Float64},Vw}; 
 VecVecVw = Union{Vector{Vector{Float64}},
