@@ -213,8 +213,20 @@ function Gaussb!(χτ::VecVw,
 		@assert size(Gbpts[i]) == (2,npts) "pts at element must match number of quad pts"
 	end	
 	
-	gen = [1,0];
+	gen = [1,1];
 	@inbounds for k=1:npts*nelm
+		i = gen[1]; j = gen[2];
+		if j == 1
+			GBnow = Gbpts[i];
+		end	
+		
+		# Map barycentric coordinates into element
+		ν = mesh[i]*(1-gaussqd[:b][j]) + mesh[i+1]*gaussqd[:b][j];
+		
+		χeff = -t + L*ν;
+		Gbnow[:,j] = [χeff,
+		              1/sqrt(2)*χeff - 1/sqrt(2)*abs(χeff)+sqrt(2)*t];
+
 		# cycle generator: i is element j indexes loc in (χ,τ) 
 		if gen[2] != npts
 			gen[2] += 1
@@ -222,16 +234,7 @@ function Gaussb!(χτ::VecVw,
 			gen[1] += 1;
 			gen[2] = 1;
 		end
-		i = gen[1]; j = gen[2];	
-		
-		# Map barycentric coordinates into element
-		ν = mesh[i]*(1-gaussqd[:b][j]) + mesh[i+1]*gaussqd[:b][j];
-		
-		χeff = -t + L*ν;
-		Gbpts[i][:,j] = [χeff,
-			       1/sqrt(2)*χeff - 1/sqrt(2)*abs(χeff)+sqrt(2)*t];
 	end
-
 end
 
 #%% Evaluation
@@ -300,19 +303,16 @@ function pullb∫fds!(f::VecVecVw,
 
 	# Integrate over element divisions of the [0,1] reference element
 	∫f = 0.
-	gen = [1,0];
+	gen = [1,1];
 	@inbounds for k=1:nelm*npts
-		# cycle generator: i is element j is index of (χ,τ) gauss pt
-		if gen[2] != npts
-			gen[2] += 1;
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
+		# i is elm index j is pt index
 		i = gen[1]; j = gen[2];
+		if j == 1
+			Gbnow = Gbpts[i];
+		end	
 
 		# eval f at this gauss point
-		χ,τ = Gbpts[i][:,j];
+		χ,τ = @view Gbnow[:,j];
 
 		#  interpolate time coefficients of f at time τ
 		if τ >= τs[end]
@@ -329,7 +329,111 @@ function pullb∫fds!(f::VecVecVw,
 
 		# accumulate into integral
 		∫f += δL*gaussqd[:w][j]*val;
+
+		# Cycle generator
+		if j != npts
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
 	end
 
 	return ∫f
+end
+
+# βyⁱ!
+"""
+Calculate the βyⁱ terms needed for the pullback integral forcing terms.
+In-place assignments stored into the βyⁱ vector.
+"""
+function βyⁱ!(βyⁱ::VecVecVw,
+	       yⁱ::VecVecVw,τs::VecVw,dom::Domain)
+	
+	χτ = [0.,0.];
+	gen = [1,1];	
+	@inbounds for k=1:length(τs)*dom.nnd
+		# i is time point j is domain node
+		i = gen[1]; j = gen[2];
+		if j == 1
+			βynow = βyⁱ[i];
+			ynow = y[i];
+			χτ[2] = τs[i]; 
+		end
+		
+		χτ[1] = dom.χaxis[j];
+		βynow[j] = β(χτ;case=:χτ)*ynow[j];
+
+		# cycle generator
+		if j != dom.nnd
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
+	end
+end
+
+# λyˢ!
+"""
+Calculate the λyˢ terms needed for the pullback integral forcing terms.
+In-place assignments stored into the λyˢ vector.
+"""
+function λyˢ!(λyˢ::VecVecVw,
+	       yˢ::VecVecVw,τs::VecVw,dom::Domain)
+	
+	χτ = [0.,0.];
+	gen = [1,1];	
+	@inbounds for k=1:length(τs)*dom.nnd
+		# i is time point j is domain node
+		i = gen[1]; j = gen[2];
+		if j == 1
+			λynow = λyˢ[i];
+			ynow = y[i];
+			χτ[2] = τs[i]; 
+		end
+		
+		χτ[1] = dom.χaxis[j];
+		λynow[j] = λ(χτ;case=:χτ)*ynow[j];
+
+		# cycle generator
+		if j != dom.nnd
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
+	end
+end
+
+# Imαyᵛ!
+"""
+Calculate the Imayᵛ terms needed for the pullback integral forcing terms.
+In-place assignments stored into the Imayᵛ vector.
+"""
+function Imayᵛ!(Imayᵛ::VecVecVw,
+	       yᵛ::VecVecVw,τs::VecVw,dom::Domain)
+	
+	χτ = [0.,0.];
+	gen = [1,1];	
+	@inbounds for k=1:length(τs)*dom.nnd
+		# i is time point j is domain node
+		i = gen[1]; j = gen[2];
+		if j == 1
+			Imaynow = Imayᵛ[i];
+			ynow = y[i];
+			χτ[2] = τs[i];
+		end
+		
+		χτ[1] = dom.χaxis[j];
+		Imaynow[j] = (1-α(χτ;case=:χτ))*ynow[j];
+
+		# cycle generator
+		if j != dom.nnd
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 1;
+		end
+	end
 end
