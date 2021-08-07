@@ -86,6 +86,25 @@ function Tℓvℓ!(t₀::Float64,tlvl::Tℓvℓ)
 	tlvl.χrg[:] = [χmin,χmax];
 	tlvl.τrg[:] = [τmin,τmax];
 end
+function Tℓvℓ!(t₀::Float64,tlvl0::Tℓvℓ,tlvl::Tℓvℓ)
+	# Overwrite fields of tlvl to new values
+	tlvl.t₀[1] = t₀;
+	
+	nds0 = tlvl0.nds;
+	nds = tlvl.nds;
+	@inbounds for i=tlvl.nnd:-1:2
+		nds[:,i] = γℓvℓ(t₀,nds0[1,i-1]);
+	end
+
+	nds[:,1] = [-t₀,0.];
+
+	χmin,τmin = minimum(nds,dims=2);
+	χmax,τmax = maximum(nds,dims=2);
+
+	tlvl.χrg[:] = [χmin,χmax];
+	tlvl.τrg[:] = [τmin,τmax];
+end
+
 
 # Yℓvℓ
 """
@@ -96,6 +115,16 @@ discretization of the level set
 struct Yℓvℓ
 	tlvl::Tℓvℓ
 	ys::Vector{Float64}
+	∫yds::Vector{Float64}
+
+	function Yℓvℓ(x::UndefInitializer)
+		tlvl = Tℓvℓ(0.,[0.]);
+		ys = [NaN];
+		∫yds = [NaN];
+
+		return new(tlvl,ys,∫yds)
+	end
+
 end
 
 
@@ -233,4 +262,8 @@ function ∫line(ylvl::Yℓvℓ)
 	end
 	
 	return ∫val
+end
+function ∫line!(ylvl::Yℓvℓ)
+	∫yds = ∫line(ylvl);
+	ylvl.∫yds[1] = ∫yds;
 end

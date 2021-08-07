@@ -1,145 +1,183 @@
-# Routines used to integrate the vaccination pde system without coupled ∂-data
-using DifferentialEquations
+# Routines used to integrate the vaccination pde system
 
-#%% ODE solver
-# flow∂yⁱ!
+#%% Ancillary routines for computing system integrands
+# βy!
 """
-Compute the flowfield equation for yⁱ
+Compute βy at the nodes along Tℓvℓ. Routine mutates the optional
+argument βy.
 """
-function flow∂yⁱ!(∂yⁱ::Vector{Float64},yⁱ::Vector{Float64},p::Dict{Symbol,Vector{Vector{Float64}}},τ::Float64)
-	χaxis = p[:χaxis];	
-	@inbounds for i=1:length(∂yⁱ)
-		pt = [χaxis[i],τ];
-		∂yⁱ[i] = -gamma(pt;case=:χτ)*yⁱ[i];
-	end
-end
+function βy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
+	     βy::Yℓvℓ=Yℓvℓ(undef))
 
-# flow∂yˢᵛ!
-"""
-Compute the flowfield equation for yˢ,yᵛ
-"""
-function flow∂yˢᵛ!(∂yˢᵛ::Vector{Float64},yˢᵛ::Vector{Float64},p::Dict{Symbol,Vector{Vector{Float64}}},τ::Float64)	
-
-	# Initialize
-	χaxis = p[:χaxis][1];
-	nnd = length(χaxis);
-	hτs = p[:hτs][1];
-	∫βyⁱds = p[:∫βyⁱds];
-
-
-	yˢ = @view yˢᵛ[1:nnd];
-	yᵛ = @view yˢᵛ[nnd+1:2*nnd];
-
-	∂yˢ = @view ∂yˢᵛ[1:nnd];
-	∂yᵛ = @view ∂yˢᵛ[nnd+1:2*nnd];
-
-	# Interpolate ∫βyⁱds @ time τ by in-place assignment to ∂yˢᵛ
-	if τ <= hτs[1]
-		∂yˢ[:] = ∫βyⁱds[1];
-	elseif τ >= hτs[end]
-		∂yˢ[:] = ∫βyⁱds[end];
+	if isnan(βy.ys[1])
+		βy = deepcopy(ylvl);
+		flagrt = true;
 	else
-		pos = myfindfirst(hτs,τ);
-		η = (τ - hτs[pos-1])/(hτs[pos]-hτs[pos-1]);
-		∂yˢ[:] = (1-η)*∫βyⁱds[pos-1] .+ η*∫βyⁱds[pos]; 
-	end
-
-	∂yᵛ[:] = ∂yˢ;
-
-	# Compute system
-	χτ = [0.,τ];
-	@inbounds for i=1:nnd
-		χτ[1] = χaxis[i];
-		# yˢ contribution
-		∂yˢ[i] += λ(χτ;case=:χτ); ∂yˢ[i] *= -1; ∂yˢ[i] *= yˢ[i];
-
-		# yᵛ contribution
-		α = α(χτ;case=:χτ);
-		∂yᵛ[i] *= (1-α); ∂yᵛ[i] += α; ∂yᵛ[i] *= -1; ∂yᵛ[i] *= yᵛ[i];
-
+		flagrt = false;
 	end
 	
+	for i=1:ylvl.tlvl.nnd
+		βy.ylvl[i] = β(ylvl.tlvl.nds[:,i],prm;case=:χτ)*
+		                 ylvl.ys[i];
+	end
+
+	if flagrt
+		return βy
+	end
 end
 
-# modelrun
+# λy!
 """
-Run the model before coupling ∂-data. y0 is the ∂-data
+Compute λy at the nodes along Tℓvℓ. Routine mutates the optional 
+argument λy
 """
-function modelrun(y0::Dict{Symbol,Vector{Float64}},prm::Dict{Symbol,Float64},dom::Domain)
-	τspan = [0.,prm[:τfin]];
+function λy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
+	     λy::Yℓvℓ=Yℓvℓ(undef))
 
-	# Solve the yⁱ system
-	p0 = Dict{Symbol,Vector{Vector{Float64}}}();
-	p0[:χaxis] = [dom.χaxis];
+	if isnan(λy.ys[1])
+		λy = deepcopy(ylvl);
+		flagrt = true;
+	else
+		flagrt = false;
+	end
 
-	prob_yⁱ = ODEProblem(flow∂yⁱ!,y0[:yⁱ],τspan,p0);
-	sol = solve(prob_yⁱ,Tsit5(),reltol=prm[:rtol],abstol=prm[:atol],saveat=prm[:δτ]);
+	for i=1:ylvl.tlvl.nnd
+		λy.ylvl[i] = λ(ylvl.tlvl.nds[:,i],prm;case=:χτ)*
+		                 ylvl.ys[i];
+	end
+
+	if flagrt
+		return λy
+	end
+end
+		
+
+# Imαy!
+"""
+Compute (1-α)y at the nodes along Tℓvℓ. Routine mutates the optional
+argument Imαy
+"""
+function Imαy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
+	       Imαy::Yℓvℓ=Yℓvℓ(undef))
 	
-	yⁱ = sol.u;
-	hτs = [sol.t]; nτs = length(hτs[1]);
-
-	# Store solution
-	YSOL = Dict{Symbol,Vector{Vector{Float64}}}(:yⁱ=>yⁱ,:hτs=>hτs);
-
-	# Compute the βyⁱ term
-	βyⁱ = Vector{Vector{Float64}}(undef,nτs);
-	for i=1:dom.nnd
-		βyⁱ[i] = Vector{Float64}(undef,dom.nnd);
-	end
-	βyⁱ!(βyⁱ,yⁱ,hτs[1],dom);
-
-	# Compute ∫βyⁱds
-	#  Initialize ∫βyⁱds
-	∫βyⁱ = deepcopy(βyⁱ);
-
-	#  Initialize Gbpts and gaussqd
-	gaussqd = quad1d(prm[:nqd]);
-	Gbpts = Vector{Matrix{Float64}}(undef,prm[:nelm]);
-	for i=1:prm[:nelm]
-		Gbpts[i] = Matrix{Float64}(undef,2,prm[:nqd]);
+	if isnan(Imαy.ys[1])
+		Imαy = deepcopy(ylvl);
+		flagrt = true;
+	else
+		flagrt = false;
 	end
 
-	χτ = [0.,0.];
-	gen = [1,1];
-	for k=1:nτs*dom.nnd
-		# i is τ-step and j is the dom.nnd
-		i = gen[1]; j = gen[2];
-		if j == 1
-			∫βnow = ∫βyⁱ[i];
-			χτ[2] = hτs[i];
-		end
-
-		χτ[1] = dom.χaxis[j];
-
-		# Compute pullback value
-		∫βnow[j] = pullb∫fds!(βyⁱ,hτs[1],χτ,dom,prm[:nelm],Gbpts;gaussqd);
-
-		# cycle generator
-		if j != dom.nnd
-			gen[2] += 1;
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
+	for i=1:ylvl.tlvl.nnd
+		Imαy.ylvl[i] = (1-α(ylvl.tlvl.nds[:,i],prm;case=:χτ))*
+				      ylvl.ys[i];
 	end
 
-	# Compute solution to yˢ,yᵛ
-	p∞ = Dict{Symbol,Vector{Vector{Float64}}}(:hτs=>hτs,:∫βyⁱds=>∫βyⁱ,:χaxis=>[dom.χaxis]);
-	prob_yˢᵛ = ODEProblem(flow∂yˢᵛ!,[y0[:yˢ];y0[:yᵛ]],τspan,p∞);
-	sol∞ = solve(prob_yˢᵛ,Tsit5(),reltol=prm[:rtol],abstol=prm[:atol],saveat=prm[:δτ]);
+	if flagrt
+		return Imαy
+	end
+end
 
-	yˢᵛ = sol∞.u;
-	yˢ = Vector{Vector{Float64}}(undef,nτs);
-	yᵛ = Vector{Vector{Float64}}(undef,nτs);
+#%% System integrator
+# euler!
+"""
+Compute an explicit Euler step of the PDE vaccination system, mutates the
+optional dictionary input for writing solutions and βy,λy,(1-α)y values
 
-	for i=1:nτs
-		yˢ[i] = yˢᵛ[i][1:dom.nnd];
-		yᵛ[i] = yˢᵛ[i][dom.nnd+1:2*dom.nnd];
+Note: Keep the EYSOL ∫yds fields empty and then euler! will internally 
+      mutate those integrals to their correct values when in later iteration
+      it is passed as YSOL
+"""
+function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float64};
+		EYSOL::Dict{Symbol,Yℓvℓ}=Dict{Symbol,Yℓvℓ}())
+	
+	nnd = YSOL[:yˢ].tlvl.nnd;
+	t₀ = YSOL[:yˢ].tlvl.t₀[1];
+	if isempty(EYSOL)
+		EYSOL = deepcopy(YSOL);
+		flagrt = true;
+	else
+		flagrt = false;
 	end
 	
-	YSOL[:yˢ] = yˢ;
-	YSOL[:yᵛ] = yᵛ;
-	YSOL[:∫βyⁱds] = ∫βyⁱ;
+	# Compute needed integrals for forward Euler step
+	#  Note the integral value is constant within [t=t₀]
+	if isnan(YSOL[:βyⁱ].∫yds[1])
+		∫βyⁱds = ∫line(YSOL[:βyⁱ]);
+		YSOL[:βyⁱ].∫yds[1] = ∫βyⁱds;
+	else
+		∫βyⁱds = YSOL[:βyⁱ].∫yds[1];
+	end
+
+	if isnan(YSOL[:λyˢ].∫yds[1])
+		∫λyˢds = ∫line(YSOL[:λyˢ]);
+		YSOL[:λyˢ].∫yds[1] = ∫λyˢds;
+	else
+		∫λyˢds = YSOL[:λyˢ].∫yds[1];
+	end
+
+	if isnan(YSOL[:yˢ].∫yds[1])
+		∫yˢds = ∫line(YSOL[:yˢ]);
+		YSOL[:yˢ].∫yds[1] = ∫yˢds;
+	else
+		∫yˢds = YSOL[:yˢ].∫yds[1];
+	end
+
+	if isnan(YSOL[:Imαyᵛ].∫yds[1])
+		∫Imαyᵛds = ∫line(YSOL[:Imαyᵛ]);
+		YSOL[:Imαyᵛ].∫yds[1] = ∫Imαyᵛds;
+	else
+		∫Imαyᵛds = YSOL[:Imαyᵛ].∫yds[1];
+	end
+
+	# Advance to new tlvl's for this Euler step
+	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); Tℓvℓ!(t₀+δt,YSOL[:λ].tlvl,EYSOL[:λ].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:yᵛ].tlvl,EYSOL[:yᵛ].tlvl); Tℓvℓ!(t₀+δt,YSOL[:α].tlvl,EYSOL[:α].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:yⁱ].tlvl,EYSOL[:yⁱ].tlvl); Tℓvℓ!(t₀+δt,YSOL[:γ].tlvl,EYSOL[:γ].tlvl);
 	
-	return YSOL
+	Tℓvℓ!(t₀+δt,YSOL[:βyⁱ].tlvl,EYSOL[:βyⁱ].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:λyˢ].tlvl,EYSOL[:λyˢ].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:Imαyᵛ].tlvl,EYSOL[:Imαyᵛ].tlvl);
+
+	# Update the non-∂ nodal solution values for this Euler step 
+	for i=2:nnd
+		δτ = EYSOL[:yˢ].tlvl.nds[2,i] - YSOL[:yˢ].tlvl.nds[2,i];
+		EYSOL[:yˢ].ys[i] = YSOL[:yˢ].ys[i-1] + δτ*
+		                     -1/√(2)*YSOL[:yˢ].ys[i-1]*( YSOL[:λ].ys[i-1] + ∫βyⁱds );
+		EYSOL[:yᵛ].ys[i] = YSOL[:yᵛ].ys[i-1] + δτ*
+		                     -1/√(2)*YSOL[:yᵛ].ys[i-1]*( YSOL[:α].ys[i-1] + (1-YSOL[:α].ys[i-1])*∫βyⁱds );
+		EYSOL[:yⁱ].ys[i] = YSOL[:yⁱ].ys[i-1] + δτ*
+		                     -1/√(2)*YSOL[:γ].ys[i-1]*YSOL[:yⁱ].ys[i-1];
+	end
+	
+	# Update the ∂-nodal solution value at (-t₀,0)
+	EYSOL[:yˢ].ys[1] = 0.;
+	EYSOL[:yᵛ].ys[1] = ∫λyˢds;
+	EYSOL[:yⁱ].ys[1] = (∫yˢds + ∫Imαyᵛds)*∫βyⁱds;
+	
+	# Update the intermediate quantities
+	βy!(EYSOL[:yⁱ],prm; βy=EYSOL[:βyⁱ]);
+	λy!(EYSOL[:yˢ],prm; λy=EYSOL[:λyˢ]);
+	Imαy!(EYSOL[:yᵛ],prm; Imαy=EYSOL[:Imαyᵛ]);
+
+	for i=1:nnd
+		EYSOL[:λ].ys[i] = λ(EYSOL.tlvl.nds[i],prm;case=:χτ);
+		EYSOL[:α].ys[i] = α(EYSOL.tlvl.nds[i],prm;case=:χτ);
+		EYSOL[:γ].ys[i] = γ(EYSOL.tlvl.nds[i],prm;case=:χτ);
+	end
+
+	if flagrt
+		return EYSOL
+	end
+
+end
+
+# vaxsolver
+"""
+Integrate the vaccination system by an explicit Euler scheme with adaptive timestep
+"""
+function vaxsolver(prm::Dict{Symbol,Float64})
+	# Define initial data
+	∂YSOL = Dict{Symbol,Yℓvℓ}();
+
+	
 end
