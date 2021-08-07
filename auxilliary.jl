@@ -15,66 +15,91 @@ VecVecVw = Union{Vector{Vector{Float64}},
 		 Vector{Vw},
 		 SubArray{Vector{Float64}, 1, Vector{Vector{Float64}}, Tuple{UnitRange{Int64}}, true}}; # vector of vector slice
 
-# Domain
+# γℓvℓ
 """
-Structure for declaring the geometry for the initial value problem and its
-discretization.
+Map parameterizing [t=t₀] over (χ,τ)-plane 
 """
-struct Domain
-	srg::Vector{Float64} # Interval spanned by saxis
-	trg::Vector{Float64} # Interval spanned by taxis
-	nelm::Int64 # number of elements along an individual ∂-axis
-	saxis::Vector{Float64} # Location of saxis nodes along srg
-	taxis::Vector{Float64} # Location of taxis nodes along trg
-	χaxis::Vector{Float64} # (mirrored taxis) and saxis combined
+function γℓvℓ(t₀::Float64,χ::Float64)
+	 
+	pt = [χ;
+	     1/√(2)*χ - 1/√(2)*abs(χ) + √(2)*t₀];
+
+	return pt
+end
+
+# Tℓvℓ
+"""
+Structure encoding the discretization of [t=t₀] in the (χ,τ)-plane
+The inner constructor allows for mutating an optional nds input so
+Julia can reduce the memory allocation
+"""
+struct Tℓvℓ
+	t₀::Vector{Float64}
 	nnd::Int64
+	nds::Matrix{Float64}
+	χrg::Vector{Float64}
+	τrg::Vector{Float64}
+	
+	function Tℓvℓ(t₀::Float64,χvals::Vector{Float64};
+		      nds::Matrix{Float64}=Matrix{Float64}(undef,2,length(χvals)))
+		@assert t₀ >= 0 "t₀ must be nonnegative"
+		nnd = length(χvals);
+		@assert size(nds) == (2,nnd) "nds must have length as χvals"
 
-	function Domain(srg::Vector{Float64},trg::Vector{Float64},
-			nelm::Int64)
-		@assert nelm >= 2 "nelm must be at least 2"
-		saxis = convert(Vector,LinRange(srg[1],srg[2],nelm));
-		taxis = convert(Vector,LinRange(trg[1],trg[2],nelm));
+		# Generate the nodes and ranges
+		@inbounds for i=1:nnd 
+			nds[:,i] = γℓvℓ(t₀,χvals[i]);
+		end
 
-		χaxis = [saxis;taxis[2:end]];
-		nnd = length(χaxis);
+		χmin,τmin = minimum(nds,dims=2);
+		χmax,τmax = maximum(nds,dims=2);
 
-		return new(srg,trg,nelm,saxis,taxis,χaxis,nnd)
-	end
+		χrg = [χmin,χmax];
+		τrg = [τmin,τmax];
+
+		return new([t₀],nnd,nds,χrg,τrg);
+	end	
 end
 
-#%% Ancillary routines
-# quad1d
+# Tℓvℓ!
 """
-Output the Guassian quadrature weights and point locations for numerical
-integration. n = 6 is exact up to polynomials of degree 11. In all cases,
-the weights should be multiplied by length of interval over which you are 
-integrating.
-n:: number of quadrature points used in the interval
+Mutate a given Tℓvℓ structure in the fashion the ODE-Euler integration
+scheme will use along characteristics:
+The first n-1 χ-coordinates of the old nodes become the last n-1 
+coordinates of the new nodes and the first node is set at (-t₀,0) in
+(χ,τ)-plane
 """
-function quad1d(n::Int64=6)
-	if n == 2 
-		# trapezoidal rule
-		w = [.5,.5];
-		b = [0.,1.];
-	elseif n == 6
-		# Gaussian quadrature
-		w = [0.171324492,0.360761573,0.467913935,
-		     0.467913935,0.360761573,0.171324492];
-		w *= .5;
-		b = [0.033765243,0.169395307,0.380690407,
-		     0.619309593,0.830604693,0.966234757];
-	else
-		@warn "Requested number of quad pts is undefined. "*
-		        "Defaulting number ..."
-		gaussqd = quad1d();
-		w = gaussqd[:w];
-		b = gaussqd[:b];
+function Tℓvℓ!(t₀::Float64,tlvl::Tℓvℓ)
+	# Overwrite fields of tlvl to new values
+	tlvl.t₀[1] = t₀;
+	
+	nds = tlvl.nds;
+	@inbounds for i=tlvl.nnd:-1:2
+		nds[:,i] = γℓvℓ(t₀,nds[1,i-1]);
 	end
 
-	gaussqd = Dict{Symbol,Vector{Float64}}(:w=>w,:b=>b);
-	return gaussqd
+	nds[:,1] = [-t₀,0.];
+
+	χmin,τmin = minimum(nds,dims=2);
+	χmax,τmax = maximum(nds,dims=2);
+
+	tlvl.χrg[:] = [χmin,χmax];
+	tlvl.τrg[:] = [τmin,τmax];
 end
 
+# Yℓvℓ
+"""
+Structure encoding the [t=t₀] level set and the nodal values of the 
+for a function defined by the interpolant along the line segment
+discretization of the level set
+"""
+struct Yℓvℓ
+	tlvl::Tℓvℓ
+	ys::Vector{Float64}
+end
+
+
+#%% Interpolation routines
 # myfindfirst
 """
 A binary search routine for finding the first time point greater than the query point
@@ -143,8 +168,8 @@ Map from (χ,τ) coordinates to (s,t) coordinates
 function Fχτ(pt::VecVw)
 	χ = pt[1]; τ = pt[2];
 
-	st = [.5*χ+.5*abs(χ) + 1/sqrt(2)*τ,
-	      -.5*χ+.5*abs(χ) + 1/sqrt(2)*τ];
+	st = [.5*χ+.5*abs(χ) + 1/√(2)*τ,
+	      -.5*χ+.5*abs(χ) + 1/√(2)*τ];
 
 	return st
 end
@@ -168,7 +193,7 @@ function Fst(pt::VecVw)
 	s = pt[1]; t = pt[2];
 
 	χτ = [s - t,
-	      1/sqrt(2)*s+1/sqrt(2)*t - 1/sqrt(2)*abs(s-t)];
+	      1/√(2)*s+1/√(2)*t - 1/√(2)*abs(s-t)];
 
 	return χτ
 end
@@ -184,256 +209,28 @@ function Fst(pts::Matrix{Float64})
 	return χτs
 end
 
-# Gaussb!
-"""
-Map the gaussian quadrature points in [0,1] to their evaluation point in 
-the (χ,τ) plane. These terms come from the pullback of the righthand side
-of the system to (χ,τ) coordinates and accordingly depend on those parameters.
-Returns a Vector{Matrix{Float64}} where [i][:,j] entry records location of
-jᵗʰ quadrature point in (χ,τ)-plane within iᵗʰ element.
+# Solution interpolation
+function eval(ylvl::Yℓvℓ,χ::Float64)
+	χs = @view ylvl.tlvl.nds[1,:];
 
-For memory allocation reasons the results overwrite and are stored into the
-Gbpts argument.
+	return myinterp(χs,ylvl.ys,χ)
+end
 
-Note: if nelm != 1, then extra Jacobian factor (x 1/nelm) will need to be
-included in quadrature weights for element length. 
-"""
-function Gaussb!(χτ::VecVw,
-		dom::Domain,
-		nelm::Int64,
-		Gbpts::Vector{Matrix{Float64}};
-		gaussqd::Dict{Symbol,Vector{Float64}}=quad1d())
-	t = Fχτ(χτ)[2]; L = dom.srg[2];
+# Solution integrations
+function ∫line(ylvl::Yℓvℓ)
+	nds = ylvl.tlvl.nds;
+	ys = ylvl.ys;
+	nnd = size(nds)[2];
 
-	npts = length(gaussqd[:w]);
-	
-	mesh = LinRange(0.,1.,nelm);
-	@assert length(Gbpts) == nelm "Gbpts must match number of elements"
-	for i=1:nelm	
-		@assert size(Gbpts[i]) == (2,npts) "pts at element must match number of quad pts"
-	end	
-	
-	gen = [1,1];
-	@inbounds for k=1:npts*nelm
-		i = gen[1]; j = gen[2];
-		if j == 1
-			GBnow = Gbpts[i];
-		end	
-		
-		# Map barycentric coordinates into element
-		ν = mesh[i]*(1-gaussqd[:b][j]) + mesh[i+1]*gaussqd[:b][j];
-		
-		χeff = -t + L*ν;
-		Gbnow[:,j] = [χeff,
-		              1/sqrt(2)*χeff - 1/sqrt(2)*abs(χeff)+sqrt(2)*t];
+	∫val = 0.;
+	@inbounds for i=1:nnd-1
+		f1 = ys[i]*(ys[i] >= 0 ? 1 : 1/√(3));
+		f2 = ys[i+1]*(ys[i+1] >= 0 ? 1 : 1/√(3));
 
-		# cycle generator: i is element j indexes loc in (χ,τ) 
-		if gen[2] != npts
-			gen[2] += 1
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
+		Δs = nds[:,i+1] - nds[:,i];
+		ds = √(Δs[1]^2+Δs[2]^2);
+		∫val += .5*(f1+f2)*ds;
 	end
-end
-
-#%% Evaluation
-"""
-Given nodal values c over nodes dom.χaxis in [-T,L], evaluate interpolant
-spline at query point χ.  You are thinking of c(τ) already evaluated for a
-specific τ and now you are left to evaluate the space component.
-"""
-function eval(c::VecVw,χ::Float64,dom::Domain)
-	@assert length(c) == dom.nnd "length of c does not match nodal dof"
-	val = myinterp(dom.χaxis,c,χ);
-
-	return val
-end
-function eval(c::VecVw,χs::VecVw,dom::Domain)
-	npts = length(χs);
 	
-	vals = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		vals[i] = eval(c,χs[i],dom);
-	end
-
-	return vals
-end
-function eval(c::VecVw,dom::Domain,χ::Float64)
-	val = eval(c,χ,dom);
-end
-function eval(c::VecVw,dom::Domain,χs::VecVw)
-	vals = eval(c,χs,dom);
-end
-
-#%% Line Integration
-# pullb∫fds!
-"""
-Given a forcing term encoded as a time series of nodal values f in the 
-(χ,τ) coordinate plane compute its corresponding pullback line integral:
-∫ᴸ₀f(s,t)ds 
-at the pt χτ = (χ,τ). The key is to write this integral in terms of fcirc Fχτ
-since these are the quantities described by the change of coordinates ODE 
-sytem.
-
-f:: Vector of time series nodal values along dom.χaxis
-τs:: Series of τ-values for which f values correspond
-χτ:: gives χ,τ values at which pulling back integral
-nelm:: Number of subelements for discretizing the [0,1] reference element ∫
-Gbpts:: Input is used to preallocate an array that is rewritten
-        at every iteration of the integration and to not have this memory be
-	reallocated each time routine is called. This is only mutated argument.
-	It should be of a vector of size nelm with entries matrices of size 
-	2 x gaussqdpts. It's two entries per quad point because they lie in the 
-	(χ,τ) plane as a pullback of a horizontal in (s,t) decays in τ as χ < 0.
-gaussqd:: optional input for quad1d and computing gaussian quadrature
-"""
-function pullb∫fds!(f::VecVecVw,
-		   τs::VecVw,χτ::VecVw,
-		   dom::Domain,
-		   nelm::Int64,
-		   Gbpts::Vector{Matrix{Float64}};
-		   gaussqd::Dict{Symbol,Vector{Float64}}=quad1d())
-	# Element Length needed to scale Gaussian quadrature
-	δL = dom.saxis[2]/nelm;	
-
-	# Extract gaussian quadrature points for this integration
-	npts = length(gaussqd[:w]);
-	Gaussb!(χτ,dom,nelm,Gbpts;gaussqd=gaussqd);	
-
-	# Integrate over element divisions of the [0,1] reference element
-	∫f = 0.
-	gen = [1,1];
-	@inbounds for k=1:nelm*npts
-		# i is elm index j is pt index
-		i = gen[1]; j = gen[2];
-		if j == 1
-			Gbnow = Gbpts[i];
-		end	
-
-		# eval f at this gauss point
-		χ,τ = @view Gbnow[:,j];
-
-		#  interpolate time coefficients of f at time τ
-		if τ >= τs[end]
-			cnow = f[end];
-		elseif τ <= τs[1]
-			cnow = f[1];
-		else
-			pos = myfindfirst(τs,τ);
-			η = (τ-τs[pos-1])/(τs[pos]-τs[pos-1]);
-			cnow = (1-η)*f[pos-1]+η*f[pos];
-		end
-		#  interpolate space contribution at position χ
-		val = eval(cnow,χ,dom);
-
-		# accumulate into integral
-		∫f += δL*gaussqd[:w][j]*val;
-
-		# Cycle generator
-		if j != npts
-			gen[2] += 1;
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
-	end
-
-	return ∫f
-end
-
-# βyⁱ!
-"""
-Calculate the βyⁱ terms needed for the pullback integral forcing terms.
-In-place assignments stored into the βyⁱ vector.
-"""
-function βyⁱ!(βyⁱ::VecVecVw,
-	       yⁱ::VecVecVw,τs::VecVw,dom::Domain)
-	
-	χτ = [0.,0.];
-	gen = [1,1];	
-	@inbounds for k=1:length(τs)*dom.nnd
-		# i is time point j is domain node
-		i = gen[1]; j = gen[2];
-		if j == 1
-			βynow = βyⁱ[i];
-			ynow = y[i];
-			χτ[2] = τs[i]; 
-		end
-		
-		χτ[1] = dom.χaxis[j];
-		βynow[j] = β(χτ;case=:χτ)*ynow[j];
-
-		# cycle generator
-		if j != dom.nnd
-			gen[2] += 1;
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
-	end
-end
-
-# λyˢ!
-"""
-Calculate the λyˢ terms needed for the pullback integral forcing terms.
-In-place assignments stored into the λyˢ vector.
-"""
-function λyˢ!(λyˢ::VecVecVw,
-	       yˢ::VecVecVw,τs::VecVw,dom::Domain)
-	
-	χτ = [0.,0.];
-	gen = [1,1];	
-	@inbounds for k=1:length(τs)*dom.nnd
-		# i is time point j is domain node
-		i = gen[1]; j = gen[2];
-		if j == 1
-			λynow = λyˢ[i];
-			ynow = y[i];
-			χτ[2] = τs[i]; 
-		end
-		
-		χτ[1] = dom.χaxis[j];
-		λynow[j] = λ(χτ;case=:χτ)*ynow[j];
-
-		# cycle generator
-		if j != dom.nnd
-			gen[2] += 1;
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
-	end
-end
-
-# Imαyᵛ!
-"""
-Calculate the Imayᵛ terms needed for the pullback integral forcing terms.
-In-place assignments stored into the Imayᵛ vector.
-"""
-function Imayᵛ!(Imayᵛ::VecVecVw,
-	       yᵛ::VecVecVw,τs::VecVw,dom::Domain)
-	
-	χτ = [0.,0.];
-	gen = [1,1];	
-	@inbounds for k=1:length(τs)*dom.nnd
-		# i is time point j is domain node
-		i = gen[1]; j = gen[2];
-		if j == 1
-			Imaynow = Imayᵛ[i];
-			ynow = y[i];
-			χτ[2] = τs[i];
-		end
-		
-		χτ[1] = dom.χaxis[j];
-		Imaynow[j] = (1-α(χτ;case=:χτ))*ynow[j];
-
-		# cycle generator
-		if j != dom.nnd
-			gen[2] += 1;
-		else
-			gen[1] += 1;
-			gen[2] = 1;
-		end
-	end
+	return ∫val
 end
