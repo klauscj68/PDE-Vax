@@ -117,10 +117,11 @@ function Tℓvℓ!(t₀::Float64,tlvl::Tℓvℓ)
 	tlvl.t₀[1] = t₀;
 	
 	q = [0.,t₀];
+	nds = tlvl.nds;
 	snds = tlvl.snds;
 	@inbounds for i=tlvl.nnd:-1:2
 		q[1] = snds[i];
-		nds[:,i] = Fχτ(q);
+		nds[:,i] = Fst(q);
 	end
 
 	nds[:,1] = [-t₀,0.];
@@ -137,10 +138,11 @@ function Tℓvℓ!(t₀::Float64,tlvl0::Tℓvℓ,tlvl::Tℓvℓ)
 	
 	q = [0.,t₀];
 	snds0 = tlvl0.snds;
-	snds = tlvl.snds;
+	nds = tlvl.nds;
+	tlvl.snds[:] = snds0;
 	@inbounds for i=tlvl.nnd:-1:2
 		q[1] = snds0[i];
-		snds[:,i] = Fχτ(q);
+		nds[:,i] = Fst(q);
 	end
 
 	nds[:,1] = [-t₀,0.];
@@ -241,7 +243,8 @@ end
 
 """
 A 1d linear interpolation scheme to be used on Yℓvℓ structures. Each
-consecutive ypts value is a [t=tpts[i]] level 
+consecutive ypts value is a [t=tpts[i]] level and the interpolation is
+essentially done by Δt in the (s,t) plane
 NOTE: Assumes the ypts all have same snds values, ie are the same spatial
       discretization
 """
