@@ -21,17 +21,14 @@ function data()
 	D[:ρ] = .3;
 
 	# Numerical discretization
-	#  Number elements within [0.,T] and [0.,L.]
-	D[:nelm] = 2.;
-
-	#  Number of quadrature points within an element
-	D[:nqd] = 6.;
+	#  Number nodes within each [t=t₀] set
+	D[:nnd] = 3.;
 
 	#  Final τ-time of integration
-	D[:τfin] = .2;
+	D[:tfin] = .2;
 
 	#   τ-downsample used to save the solution along integration
-	D[:δτ] = .1;
+	D[:δt] = .1;
 
 	#   tolerances for ode integration
 	D[:atol] = 1e-6;
@@ -47,7 +44,7 @@ Defaults to λ(s,t) but optional case argument can be used to instead
 compute λ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function λ(pt::VecVw;case::Symbol=:st)
+function λ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	
 	if case == :st
 		s = pt[1]; t = pt[2];
@@ -72,7 +69,7 @@ Defaults to β(s,t) but optional case argument can be used to instead
 compute β(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function β(pt::VecVw;case::Symbol=:st)
+function β(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -96,7 +93,7 @@ Defaults to α(s,t) but optional case argument can be used to instead
 compute α(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function α(pt::VecVw;case::Symbol=:st)
+function α(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -120,7 +117,7 @@ Defaults to γ(s,t) but optional case argument can be used to instead
 compute γ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function γ(pt::VecVw;case::Symbol=:st)
+function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -144,7 +141,7 @@ Defaults to fˢ(s,t) but optional case argument can be used to instead
 compute fˢ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function fˢ(pt::VecVw;case::Symbol=:st)
+function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -168,7 +165,7 @@ Defaults to fⁱ(s,t) but optional case argument can be used to instead
 compute fⁱ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function fⁱ(pt::VecVw;case::Symbol=:st)
+function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -186,68 +183,68 @@ function fⁱ(pt::VecVw;case::Symbol=:st)
 end
 
 #%% Auxilliary methods for sampling function parameters across batch of sample points
-function λ(pts::Matrix{Float64};case::Symbol=:st)
+function λ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = λ(@view pts[:,i];case=case);
+		val[i] = λ(@view pts[:,i],prm;case=case);
 	end
 
 	return val
 end
-function β(pts::Matrix{Float64};case::Symbol=:st)
+function β(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = β(@view pts[:,i];case=case);
+		val[i] = β(@view pts[:,i],prm;case=case);
 	end
 
 	return val
 end
-function α(pts::Matrix{Float64};case::Symbol=:st)
+function α(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = α(@view pts[:,i];case=case);
+		val[i] = α(@view pts[:,i],prm;case=case);
 	end
 
 	return val
 end
-function γ(pts::Matrix{Float64};case::Symbol=:st)
+function γ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = γ(@view pts[:,i];case=case);
+		val[i] = γ(@view pts[:,i],prm;case=case);
 	end
 
 	return val
 end
-function fˢ(pts::Matrix{Float64};case::Symbol=:st)
+function fˢ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = fˢ(@view pts[:,i];case=case);
+		val[i] = fˢ(@view pts[:,i],prm;case=case);
 	end
 
 	return val
 end
-function fⁱ(pts::Matrix{Float64};case::Symbol=:st)
+function fⁱ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = fⁱ(@view pts[:,i];case=case);
+		val[i] = fⁱ(@view pts[:,i],prm;case=case);
 	end
 
 	return val

@@ -1,5 +1,4 @@
 # Routines used to integrate the vaccination pde system
-
 #%% Ancillary routines for computing system integrands
 # βy!
 """
@@ -83,7 +82,7 @@ end
 Compute an explicit Euler step of the PDE vaccination system, mutates the
 optional dictionary input for writing solutions and βy,λy,(1-α)y values
 
-Note: Keep the EYSOL ∫yds fields empty and then euler! will internally 
+Note: Keep the EYSOL ∫yds fields NaN and then euler! will internally 
       mutate those integrals to their correct values when in later iteration
       it is passed as YSOL
 """
@@ -91,7 +90,7 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 		EYSOL::Dict{Symbol,Yℓvℓ}=Dict{Symbol,Yℓvℓ}())
 	
 	nnd = YSOL[:yˢ].tlvl.nnd;
-	t₀ = YSOL[:yˢ].tlvl.t₀[1];
+	t₀ = YSOL[:yˢ].tlvl.t₀[1];	
 	if isempty(EYSOL)
 		EYSOL = deepcopy(YSOL);
 		flagrt = true;
@@ -138,21 +137,48 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	Tℓvℓ!(t₀+δt,YSOL[:λyˢ].tlvl,EYSOL[:λyˢ].tlvl);
 	Tℓvℓ!(t₀+δt,YSOL[:Imαyᵛ].tlvl,EYSOL[:Imαyᵛ].tlvl);
 
-	# Update the non-∂ nodal solution values for this Euler step 
-	for i=2:nnd
-		δτ = EYSOL[:yˢ].tlvl.nds[2,i] - YSOL[:yˢ].tlvl.nds[2,i];
-		EYSOL[:yˢ].ys[i] = YSOL[:yˢ].ys[i-1] + δτ*
-		                     -1/√(2)*YSOL[:yˢ].ys[i-1]*( YSOL[:λ].ys[i-1] + ∫βyⁱds );
-		EYSOL[:yᵛ].ys[i] = YSOL[:yᵛ].ys[i-1] + δτ*
-		                     -1/√(2)*YSOL[:yᵛ].ys[i-1]*( YSOL[:α].ys[i-1] + (1-YSOL[:α].ys[i-1])*∫βyⁱds );
-		EYSOL[:yⁱ].ys[i] = YSOL[:yⁱ].ys[i-1] + δτ*
-		                     -1/√(2)*YSOL[:γ].ys[i-1]*YSOL[:yⁱ].ys[i-1];
-	end
-	
 	# Update the ∂-nodal solution value at (-t₀,0)
 	EYSOL[:yˢ].ys[1] = 0.;
 	EYSOL[:yᵛ].ys[1] = ∫λyˢds;
 	EYSOL[:yⁱ].ys[1] = (∫yˢds + ∫Imαyᵛds)*∫βyⁱds;
+	
+	# Update the non-∂ nodal solution values for this Euler step 
+	χsY = @view YSOL[:yˢ].tlvl.nds[1,:];
+	@inbounds for i=2:nnd
+		# Find value of solution directly underneath 
+		nd = @view EYSOL[:yˢ].tlvl.nds[:,i];
+		if nd[1] >= χsY[1]
+			# Node is overtop the prior t level
+			nd0 = γℓvℓ(t₀,nd[1]);
+			δτ = nd[2] - nd0[2];
+
+			yˢ₀ = myinterp(χsY,YSOL[:yˢ].ys,nd[1]);
+			yᵛ₀ = myinterp(χsY,YSOL[:yᵛ].ys,nd[1]);
+			yⁱ₀ = myinterp(χsY,YSOL[:yⁱ].ys,nd[1]);
+
+		else
+			# Node is overtop the ∂
+			nd0 = [nd[1],0.];
+			δτ = EYSOL[:yˢ].tlvl.nds[2,1];
+			
+			yˢ₀ = 0.;
+			yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
+				       [ ∫λyˢds,YSOL[:yᵛ].ys[1] ],
+				       nd[1]);
+			yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
+				       [ ∫λyˢds,YSOL[:yⁱ].ys[1] ],
+				       nd[1]);
+
+		end
+
+		λ₀ = λ(nd0,prm;case=:χτ);
+		α₀ = α(nd0,prm;case=:χτ);
+		γ₀ = γ(nd0,prm;case=:χτ);
+
+		EYSOL[:yˢ].ys[i] = yˢ₀ - 1/√(2)*yˢ₀*( λ₀ + ∫βyⁱds )*δτ;
+		EYSOL[:yᵛ].ys[i] = yᵛ₀ - 1/√(2)*yᵛ₀*( α₀ + (1-α₀)*∫βyⁱds )*δτ;
+		EYSOL[:yⁱ].ys[i] = yⁱ₀ - 1/√(2)*γ₀*yⁱ₀*δτ;
+	end	
 	
 	# Update the intermediate quantities
 	βy!(EYSOL[:yⁱ],prm; βy=EYSOL[:βyⁱ]);
@@ -171,13 +197,129 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 
 end
 
+# ∂YSOL
+"""
+Routine to define the boundary data at the [t=0.] level
+"""
+function ∂YSOL(prm::Dict{Symbol,Float64})
+	# Define initial geometry
+	tlvl = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:L],Int64(prm[:nnd]))) );
+	
+	# Define [t=0.] ∂-values
+	YSOL = Dict{Symbol,Yℓvℓ}();
+
+	yˢ = Vector{Float64}(undef,prm[:nnd]);
+	yᵛ = zeros(prm[:nnd]);
+	yⁱ = Vector{Float64}(undef,prm[:nnd]);
+	λs = Vector{Float64}(undef,prm[:nnd]);
+	αs = Vector{Float64}(undef,prm[:nnd]);
+	γs = Vector{Float64}(undef,prm[:nnd]);
+	for i=1:nnd
+		yˢ[i] = fˢ(@view tlvl.nds[:,i],prm;case=:χτ);
+		yⁱ[i] = prm[:ρ]*fⁱ(@view tlvl.nds[:,i],prm;case=:χτ);
+
+		λs[i] = λ(@view tlvl.nds[:,i],prm;case=:χτ);
+		αs[i] = α(@view tlvl.nds[:,i],prm;case=:χτ);
+		γs[i] = γ(@view tlvl.nds[:,i],prm;case=:χτ);
+	end
+	YSOL[:yˢ] = Yℓvℓ(tlvl,yˢ);
+	YSOL[:yᵛ] = Yℓvℓ(tlvl,yᵛ);
+	YSOL[:yⁱ] = Yℓvℓ(tlvl,yⁱ);
+	
+	#  βyⁱ,λyˢ,Imαyᵛ
+	YSOL[:βyⁱ] = βy!(YSOL[:yⁱ],prm);
+	YSOL[:λyˢ] = λy!(YSOL[:yˢ],prm);
+	YSOL[:Imαyᵛ] = Imαy!(YSOL[:yᵛ],prm);
+
+	return YSOL
+end
+
 # vaxsolver
 """
 Integrate the vaccination system by an explicit Euler scheme with adaptive timestep
 """
 function vaxsolver(prm::Dict{Symbol,Float64})
-	# Define initial data
-	∂YSOL = Dict{Symbol,Yℓvℓ}();
-
+	# Intialize values and vectors for storing solution 
+	taxis = convert(Vector,0.: prm[:δt] : prm[:tfin]);
+	ntdwn = length(taxis);
+	SOL = Vector{Dict{Symbol,Yℓvℓ}}(undef,ntdwn);
 	
+	# Setup ∂-[t=0] data
+	SOL[1] = ∂YSOL(prm);
+
+	# Adaptive Euler step requires 4 Yℓvℓ mem locs for writing output
+	ynow = deepcopy(SOL[1]); ynext = deepcopy(ynow);
+	ymid = deepcopy(ynow); y2xmid = deepcopy(ynow);
+	
+	pos = 2; # indicates which taxis value is next to surpass
+	δt = prm[:δt]; # initial guess of adaptive Euler step
+	yaerr = [0.,0.,0.]; # stores the ODE solver absolute error
+	yrerr = [0.,0.,0.]; # stores the ODE solver relative error
+	while pos <= ntdwn
+		# Compute the full step
+		euler!(δt,ynow,prm;EYSOL=ynext);
+
+		# Compute the two half-steps
+		euler!(.5*δt,ynow,prm;EYSOL=ymid);
+		euler!(.5*δt,ymid,prm;EYSOL=y2xmid);
+
+		# Compute the abs errors
+		yaerr[1] = maximum(abs.(y2xmid[:yˢ].ys-ynext[:yˢ].ys));
+		yaerr[2] = maximum(abs.(y2xmid[:yᵛ].ys-ynext[:yᵛ].ys));
+		yaerr[3] = maximum(abs.(y2xmid[:yⁱ].ys-ynext[:yⁱ].ys));
+
+		# Compute the rel errors
+		yrerr[1] = yaerr[1]/(sum(abs.(ynow[:yˢ]))/prm[:nnd]);
+		yrerr[2] = yaerr[2]/(sum(abs.(ynow[:yᵛ]))/prm[:nnd]);
+		yrerr[3] = yaerr[3]/(sum(abs.(ynow[:yⁱ]))/prm[:nnd]);
+
+
+		# Act according to accepting or addapting the t-step
+		flagδt = (yaerr .<= prm[:atol]).|(yrerr .<= prm[:rtol]);
+		flag = flagδt[1]&&flagδt[2]&&flagδt[3];
+
+		if !flag
+			# Error tolerances not attained so adapt and iterate
+			δt *= .5;
+			continue
+		end
+		
+		# Error tolerances attained so accept	
+		tnow = ynow.tlvl.t₀[1]; tnext = y2xmid.tlvl.t₀[1];
+		if tnext >= taxis[pos]	
+			# We've passed a downsample t-value and will now store
+			posnext = (tnext < taxis[end] ? 
+				    myfindfirst(taxis,tnext) : myfindfirst(taxis,tnext) + 1 );
+
+			# Interpolate the inbetween values
+			for i=pos:posnext-1
+				SOL[i][:yˢ] = myinterp([tnow,tnext],[ynow[:yˢ],y2xmid[:yˢ]],taxis[i]);
+				SOL[i][:yᵛ] = myinterp([tnow,tnext],[ynow[:yᵛ],y2xmid[:yᵛ]],taxis[i]);
+				SOL[i][:yⁱ] = myinterp([tnow,tnext],[ynow[:yⁱ],y2xmid[:yⁱ]],taxis[i]);
+
+				SOL[i][:λ] = myinterp([tnow,tnext],[ynow[:λ],y2xmid[:λ]],taxis[i]);
+				SOL[i][:α] = myinterp([tnow,tnext],[ynow[:α],y2xmid[:α]],taxis[i]);
+				SOL[i][:γ] = myinterp([tnow,tnext],[ynow[:γ],y2xmid[:γ]],taxis[i]);
+
+				SOL[i][:βyⁱ] = myinterp([tnow,tnext],[ynow[:βyⁱ],y2xmid[:βyⁱ]],taxis[i]);
+				SOL[i][:λyˢ] = myinterp([tnow,tnext],[ynow[:λyˢ],y2xmid[:λyˢ]],taxis[i]);
+				SOL[i][:Imαyᵛ] = myinterp([tnow,tnext],[ynow[:Imαyᵛ],y2xmid[:Imαyᵛ]],taxis[i]);
+			end
+
+			# Define new position
+			pos = posnext;
+	
+		end
+
+		ynow.tlvl.t₀[:] = y2xmid.tlvl.t₀;
+		ynow.tlvl.nds[:,:] = y2xmid.tlvl.nds;
+		ynow.tlvl.χrg[:] = y2xmid.tlvl.χrg;
+		ynow.tlvl.τrg[:] = y2xmid.tlvl.τrg;
+		ynow.ys[:] = y2xmid.ys;
+
+		# Try a larger time step and continue iteration
+		δt = minimum([2*δt,prm[:δt]]);
+	end
+
+	return taxis,SOL
 end

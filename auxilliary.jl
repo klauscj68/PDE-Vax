@@ -1,20 +1,12 @@
 ## Suite of ancillary routines for solving the vaccination PDE system
+#%% Aliases
+VecVw = Union{
+	      Vector{Float64},
+	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Int64, Base.Slice{Base.OneTo{Int64}}}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:]
+	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:] 
+	     }
 
-#%% Custom Structures
-# Aliases for Views and Vector of views
-"""
-Convenient alias to accomodate vector or view of vector input
-"""
-Vw = Union{
-	   SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # matrix slice
-	   SubArray{Float64, 1, Vector{Float64}, Tuple{UnitRange{Int64}}, true}, # vector slice
-	   SubArray{Float64, 1, Matrix{Float64}, Tuple{UnitRange{Int64}, Int64}, true} # vector slice of matrix slice 
-	   };
-VecVw = Union{Vector{Float64},Vw}; 
-VecVecVw = Union{Vector{Vector{Float64}},
-		 Vector{Vw},
-		 SubArray{Vector{Float64}, 1, Vector{Vector{Float64}}, Tuple{UnitRange{Int64}}, true}}; # vector of vector slice
-
+#%% Coordinate Transformation
 # γℓvℓ
 """
 Map parameterizing [t=t₀] over (χ,τ)-plane 
@@ -27,6 +19,55 @@ function γℓvℓ(t₀::Float64,χ::Float64)
 	return pt
 end
 
+# Fχτ
+"""
+Map from (χ,τ) coordinates to (s,t) coordinates
+"""
+function Fχτ(pt::VecVw)
+	χ = pt[1]; τ = pt[2];
+
+	st = [.5*χ+.5*abs(χ) + 1/√(2)*τ,
+	      -.5*χ+.5*abs(χ) + 1/√(2)*τ];
+
+	return st
+end
+function Fχτ(pts::Matrix{Float64})
+	@assert size(pts)[1] == 2 "pts must be two dimensional"
+	npts = size(pts)[2];
+	
+	sts = Matrix{Float64}(undef,2,npts)
+	@inbounds for j=1:npts
+		sts[:,j] = Fχτ(@view pts[:,j]);
+	end
+
+	return sts
+end
+
+# Fst
+"""
+Map from (s,t) coordinates to (χ,τ) coordinates
+"""
+function Fst(pt::VecVw)
+	s = pt[1]; t = pt[2];
+
+	χτ = [s - t,
+	      1/√(2)*s+1/√(2)*t - 1/√(2)*abs(s-t)];
+
+	return χτ
+end
+function Fst(pts::Matrix{Float64})
+	@assert size(pts)[1] == 2 "pts must be two dimensional"
+	npts = size(pts)[2];
+	
+	χτs = Matrix{Float64}(undef,2,npts)
+	@inbounds for j=1:npts
+		χτs[:,j] = Fst(@view pts[:,j]);
+	end
+
+	return χτs
+end
+
+#%% Custom Structures
 # Tℓvℓ
 """
 Structure encoding the discretization of [t=t₀] in the (χ,τ)-plane
@@ -39,6 +80,7 @@ struct Tℓvℓ
 	nds::Matrix{Float64}
 	χrg::Vector{Float64}
 	τrg::Vector{Float64}
+	snds::Vector{Float64}
 	
 	function Tℓvℓ(t₀::Float64,χvals::Vector{Float64};
 		      nds::Matrix{Float64}=Matrix{Float64}(undef,2,length(χvals)))
@@ -47,8 +89,11 @@ struct Tℓvℓ
 		@assert size(nds) == (2,nnd) "nds must have length as χvals"
 
 		# Generate the nodes and ranges
+		snds = Vector{Float64}(undef,nnd);
 		@inbounds for i=1:nnd 
-			nds[:,i] = γℓvℓ(t₀,χvals[i]);
+			pt = γℓvℓ(t₀,χvals[i]);
+			nds[:,i] = pt;
+			snds[i] = Fχτ(pt)[1];
 		end
 
 		χmin,τmin = minimum(nds,dims=2);
@@ -57,7 +102,7 @@ struct Tℓvℓ
 		χrg = [χmin,χmax];
 		τrg = [τmin,τmax];
 
-		return new([t₀],nnd,nds,χrg,τrg);
+		return new([t₀],nnd,nds,χrg,τrg,snds);
 	end	
 end
 
@@ -65,17 +110,17 @@ end
 """
 Mutate a given Tℓvℓ structure in the fashion the ODE-Euler integration
 scheme will use along characteristics:
-The first n-1 χ-coordinates of the old nodes become the last n-1 
-coordinates of the new nodes and the first node is set at (-t₀,0) in
-(χ,τ)-plane
+Maps the s-coord values to the new [t=t0] level in (χ,τ)-plane
 """
 function Tℓvℓ!(t₀::Float64,tlvl::Tℓvℓ)
 	# Overwrite fields of tlvl to new values
 	tlvl.t₀[1] = t₀;
 	
-	nds = tlvl.nds;
+	q = [0.,t₀];
+	snds = tlvl.snds;
 	@inbounds for i=tlvl.nnd:-1:2
-		nds[:,i] = γℓvℓ(t₀,nds[1,i-1]);
+		q[1] = snds[i];
+		nds[:,i] = Fχτ(q);
 	end
 
 	nds[:,1] = [-t₀,0.];
@@ -90,10 +135,12 @@ function Tℓvℓ!(t₀::Float64,tlvl0::Tℓvℓ,tlvl::Tℓvℓ)
 	# Overwrite fields of tlvl to new values
 	tlvl.t₀[1] = t₀;
 	
-	nds0 = tlvl0.nds;
-	nds = tlvl.nds;
+	q = [0.,t₀];
+	snds0 = tlvl0.snds;
+	snds = tlvl.snds;
 	@inbounds for i=tlvl.nnd:-1:2
-		nds[:,i] = γℓvℓ(t₀,nds0[1,i-1]);
+		q[1] = snds0[i];
+		snds[:,i] = Fχτ(q);
 	end
 
 	nds[:,1] = [-t₀,0.];
@@ -104,7 +151,6 @@ function Tℓvℓ!(t₀::Float64,tlvl0::Tℓvℓ,tlvl::Tℓvℓ)
 	tlvl.χrg[:] = [χmin,χmax];
 	tlvl.τrg[:] = [τmin,τmax];
 end
-
 
 # Yℓvℓ
 """
@@ -125,6 +171,10 @@ struct Yℓvℓ
 		return new(tlvl,ys,∫yds)
 	end
 
+	function Yℓvℓ(tlvl::Tℓvℓ,ys::Vector{Float64})
+
+		return new(tlvl,ys,[NaN])
+	end
 end
 
 
@@ -189,53 +239,44 @@ function myinterp(tpts::VecVw,ypts::VecVw,teval::Float64)
 
 end
 
-#%% Coordinate Transformation
-# Fχτ
 """
-Map from (χ,τ) coordinates to (s,t) coordinates
+A 1d linear interpolation scheme to be used on Yℓvℓ structures. Each
+consecutive ypts value is a [t=tpts[i]] level 
+NOTE: Assumes the ypts all have same snds values, ie are the same spatial
+      discretization
 """
-function Fχτ(pt::VecVw)
-	χ = pt[1]; τ = pt[2];
+function myinterp(tpts::VecVw,ypts::Vector{Yℓvℓ},teval::Float64)
+	if teval <= tpts[1]
+		val = ypts[1];
+	elseif teval >= tpts[end]
+		val = ypts[end];
+	else
+		pos = myfindfirst(tpts,teval);
+		t1,t2 = tpts[pos-1:pos];
+		s = (teval-t1)/(t2-t1);
 
-	st = [.5*χ+.5*abs(χ) + 1/√(2)*τ,
-	      -.5*χ+.5*abs(χ) + 1/√(2)*τ];
+		# Construct the Tℓvℓ
+		nnd = ypts[1].tlvl.nnd;
+		nds = Matrix{Float64}(undef,2,nnd);
+		for i=1:nnd
+			nds[:,i] = Fst([ypts[1].tlvl.snds[i],teval]);
+		end
 
-	return st
-end
-function Fχτ(pts::Matrix{Float64})
-	@assert size(pts)[1] == 2 "pts must be two dimensional"
-	npts = size(pts)[2];
-	
-	sts = Matrix{Float64}(undef,2,npts)
-	@inbounds for j=1:npts
-		sts[:,j] = Fχτ(@view pts[:,j]);
+		χmin,τmin = minimum(nds,dims=2);
+		χmax,τmax = maximum(nds,dims=2);
+
+		χrg = [χmin,χmax];
+		τrg = [τmin,τmax];
+
+		tlvl = Tℓvℓ(teval,nnd,nds,χrg,τrg,ypts[1].tlvl.snds);
+
+		# Construct the ys
+		ys = (1-s)*ypts[pos-1].ys + s*ypts[pos].ys;
+
+		val = Yℓvℓ(tlvl,ys);
 	end
 
-	return sts
-end
-
-# Fst
-"""
-Map from (s,t) coordinates to (χ,τ) coordinates
-"""
-function Fst(pt::VecVw)
-	s = pt[1]; t = pt[2];
-
-	χτ = [s - t,
-	      1/√(2)*s+1/√(2)*t - 1/√(2)*abs(s-t)];
-
-	return χτ
-end
-function Fst(pts::Matrix{Float64})
-	@assert size(pts)[1] == 2 "pts must be two dimensional"
-	npts = size(pts)[2];
-	
-	χτs = Matrix{Float64}(undef,2,npts)
-	@inbounds for j=1:npts
-		χτs[:,j] = Fst(@view pts[:,j]);
-	end
-
-	return χτs
+	return val
 end
 
 # Solution interpolation
