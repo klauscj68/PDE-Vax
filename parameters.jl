@@ -30,9 +30,13 @@ function data()
 	#   τ-downsample used to save the solution along integration
 	D[:δt] = .1;
 
-	#   tolerances for ode integration
+	#   tolerances for ode integration and maximum permitted 
+	#   integration step
 	D[:atol] = 1e-6;
 	D[:rtol] = 1e-3;
+	D[:δtmax] = D[:δt];
+
+	return D
 	
 end
 

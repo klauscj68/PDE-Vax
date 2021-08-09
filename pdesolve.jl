@@ -16,8 +16,8 @@ function βy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 	end
 	
 	for i=1:ylvl.tlvl.nnd
-		βy.ylvl[i] = β(ylvl.tlvl.nds[:,i],prm;case=:χτ)*
-		                 ylvl.ys[i];
+		βy.ys[i] = β(ylvl.tlvl.nds[:,i],prm;case=:χτ)*
+		             ylvl.ys[i];
 	end
 
 	if flagrt
@@ -41,8 +41,8 @@ function λy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 	end
 
 	for i=1:ylvl.tlvl.nnd
-		λy.ylvl[i] = λ(ylvl.tlvl.nds[:,i],prm;case=:χτ)*
-		                 ylvl.ys[i];
+		λy.ys[i] = λ(ylvl.tlvl.nds[:,i],prm;case=:χτ)*
+		             ylvl.ys[i];
 	end
 
 	if flagrt
@@ -67,8 +67,8 @@ function Imαy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 	end
 
 	for i=1:ylvl.tlvl.nnd
-		Imαy.ylvl[i] = (1-α(ylvl.tlvl.nds[:,i],prm;case=:χτ))*
-				      ylvl.ys[i];
+		Imαy.ys[i] = (1-α(ylvl.tlvl.nds[:,i],prm;case=:χτ))*
+			      ylvl.ys[i];
 	end
 
 	if flagrt
@@ -80,7 +80,8 @@ end
 # euler!
 """
 Compute an explicit Euler step of the PDE vaccination system, mutates the
-optional dictionary input for writing solutions and βy,λy,(1-α)y values
+optional dictionary input for writing solutions and λ,α,γ and 
+βy,λy,(1-α)y values
 
 Note: Keep the EYSOL ∫yds fields NaN and then euler! will internally 
       mutate those integrals to their correct values when in later iteration
@@ -137,7 +138,7 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	Tℓvℓ!(t₀+δt,YSOL[:λyˢ].tlvl,EYSOL[:λyˢ].tlvl);
 	Tℓvℓ!(t₀+δt,YSOL[:Imαyᵛ].tlvl,EYSOL[:Imαyᵛ].tlvl);
 
-	# Update the ∂-nodal solution value at (-t₀,0)
+	# Update the ∂-nodal solution value at (χ,τ) = (-t₀,0)
 	EYSOL[:yˢ].ys[1] = 0.;
 	EYSOL[:yᵛ].ys[1] = ∫λyˢds;
 	EYSOL[:yⁱ].ys[1] = (∫yˢds + ∫Imαyᵛds)*∫βyⁱds;
@@ -166,7 +167,7 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 				       [ ∫λyˢds,YSOL[:yᵛ].ys[1] ],
 				       nd[1]);
 			yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
-				       [ ∫λyˢds,YSOL[:yⁱ].ys[1] ],
+				       [ (∫yˢds + ∫Imαyᵛds)*∫βyⁱds,YSOL[:yⁱ].ys[1] ],
 				       nd[1]);
 
 		end
@@ -214,7 +215,7 @@ function ∂YSOL(prm::Dict{Symbol,Float64})
 	λs = Vector{Float64}(undef,prm[:nnd]);
 	αs = Vector{Float64}(undef,prm[:nnd]);
 	γs = Vector{Float64}(undef,prm[:nnd]);
-	for i=1:nnd
+	for i=1:prm[:nnd]
 		yˢ[i] = fˢ(@view tlvl.nds[:,i],prm;case=:χτ);
 		yⁱ[i] = prm[:ρ]*fⁱ(@view tlvl.nds[:,i],prm;case=:χτ);
 
@@ -289,7 +290,7 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 		if tnext >= taxis[pos]	
 			# We've passed a downsample t-value and will now store
 			posnext = (tnext < taxis[end] ? 
-				    myfindfirst(taxis,tnext) : myfindfirst(taxis,tnext) + 1 );
+				    myfindfirst(taxis,tnext) : ntdwn + 1 );
 
 			# Interpolate the inbetween values
 			for i=pos:posnext-1
@@ -310,15 +311,18 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 			pos = posnext;
 	
 		end
-
-		ynow.tlvl.t₀[:] = y2xmid.tlvl.t₀;
-		ynow.tlvl.nds[:,:] = y2xmid.tlvl.nds;
-		ynow.tlvl.χrg[:] = y2xmid.tlvl.χrg;
-		ynow.tlvl.τrg[:] = y2xmid.tlvl.τrg;
-		ynow.ys[:] = y2xmid.ys;
+		
+		for key in keys(ynow)
+			ynow[key].tlvl.t₀[:] = y2xmid[key].tlvl.t₀;
+			ynow[key].tlvl.nds[:,:] = y2xmid[key].tlvl.nds;
+			ynow[key].tlvl.χrg[:] = y2xmid[key].tlvl.χrg;
+			ynow[key].tlvl.τrg[:] = y2xmid[key].tlvl.τrg;
+			ynow[key].ys[:] = y2xmid[key].ys;
+			ynow[key].∫yds[:] = [NaN];
+		end
 
 		# Try a larger time step and continue iteration
-		δt = minimum([2*δt,prm[:δt]]);
+		δt = minimum([2*δt,prm[:δtmax]]);
 	end
 
 	return taxis,SOL
