@@ -160,7 +160,7 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 		else
 			# Node is overtop the ∂
 			nd0 = [nd[1],0.];
-			δτ = EYSOL[:yˢ].tlvl.nds[2,1];
+			δτ = nd[2];
 			
 			yˢ₀ = 0.;
 			yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
