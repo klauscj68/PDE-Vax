@@ -7,36 +7,36 @@
 Dictionary storing model scalar parameters
 """
 function data()
-	D = Dict{Symbol,Float64}();
+	prm = Dict{Symbol,Float64}();
 	
 	# Domain
 	#  Largest age
-	D[:L] = 85.;
+	prm[:L] = 10.;
 
 	#  Largest time
-	D[:T] = 85.;	
+	prm[:T] = 10.;	
 
 	# Epidemic
 	#  Initial fraction vaccinated
-	D[:ρ] = .3;
+	prm[:ρ] = .3;
 
 	# Numerical discretization
 	#  Number nodes within each [t=t₀] set
-	D[:nnd] = 3.;
+	prm[:nnd] = 3.;
 
-	#  Final τ-time of integration
-	D[:tfin] = .2;
+	#  Final t-time of integration
+	prm[:tfin] = 3.;
 
-	#   τ-downsample used to save the solution along integration
-	D[:δt] = .1;
+	#   t-downsample used to save the solution along integration
+	prm[:δt] = 1.;
 
 	#   tolerances for ode integration and maximum permitted 
 	#   integration step
-	D[:atol] = 1e-6;
-	D[:rtol] = 1e-3;
-	D[:δtmax] = D[:δt];
+	prm[:atol] = 1e-6;
+	prm[:rtol] = 1e-3;
+	prm[:δtmax] = prm[:δt];
 
-	return D
+	return prm
 	
 end
 
@@ -54,11 +54,11 @@ function λ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of λ(s,t) given here	
-		val = .1*(s+t);
+		val = 1.;
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
-		val = λ(newpt;case=:st);
+		val = λ(newpt,prm;case=:st);
 	else
 		error("not valid λ-eval case");
 	end
@@ -78,11 +78,11 @@ function β(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of β(s,t) given here	
-		val = .5*s;
+		val = 1.;
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
-		val = β(newpt;case=:st);
+		val = β(newpt,prm;case=:st);
 	else
 		error("not valid β-eval case");
 	end
@@ -102,11 +102,11 @@ function α(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of α(s,t) given here	
-		val = exp(-s/50);
+		val = 1.;
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
-		val = α(newpt;case=:st);
+		val = α(newpt,prm;case=:st);
 	else
 		error("not valid α-eval case");
 	end
@@ -126,11 +126,11 @@ function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of α(s,t) given here	
-		val = 2*s;
+		val = 1.;
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
-		val = γ(newpt;case=:st);
+		val = γ(newpt,prm;case=:st);
 	else
 		error("not valid γ-eval case");
 	end
@@ -154,7 +154,7 @@ function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
-		val = fˢ(newpt;case=:st);
+		val = fˢ(newpt,prm;case=:st);
 	else
 		error("not valid fˢ-eval case");
 	end
@@ -178,7 +178,7 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
-		val = fⁱ(newpt;case=:st);
+		val = fⁱ(newpt,prm;case=:st);
 	else
 		error("not valid fⁱ-eval case");
 	end
@@ -193,7 +193,8 @@ function λ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = λ(@view pts[:,i],prm;case=case);
+		pt = @view pts[:,i];
+		val[i] = λ(pt,prm;case=case);
 	end
 
 	return val
@@ -204,7 +205,8 @@ function β(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = β(@view pts[:,i],prm;case=case);
+		pt = @view pts[:,i];
+		val[i] = β(pt,prm;case=case);
 	end
 
 	return val
@@ -215,7 +217,8 @@ function α(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = α(@view pts[:,i],prm;case=case);
+		pt = @view pts[:,i];
+		val[i] = α(pt,prm;case=case);
 	end
 
 	return val
@@ -226,7 +229,8 @@ function γ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = γ(@view pts[:,i],prm;case=case);
+		pt = @view pts[:,i];
+		val[i] = γ(pt,prm;case=case);
 	end
 
 	return val
@@ -237,7 +241,8 @@ function fˢ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = fˢ(@view pts[:,i],prm;case=case);
+		pt = @view pts[:,i];
+		val[i] = fˢ(pt,prm;case=case);
 	end
 
 	return val
@@ -248,7 +253,8 @@ function fⁱ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	val = Vector{Float64}(undef,npts);
 	@inbounds for i=1:npts
-		val[i] = fⁱ(@view pts[:,i],prm;case=case);
+		pt = @view pts[:,i];
+		val[i] = fⁱ(pt,prm;case=case);
 	end
 
 	return val

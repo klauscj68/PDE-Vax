@@ -187,9 +187,9 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	Imαy!(EYSOL[:yᵛ],prm; Imαy=EYSOL[:Imαyᵛ]);
 
 	for i=1:nnd
-		EYSOL[:λ].ys[i] = λ(EYSOL.tlvl.nds[i],prm;case=:χτ);
-		EYSOL[:α].ys[i] = α(EYSOL.tlvl.nds[i],prm;case=:χτ);
-		EYSOL[:γ].ys[i] = γ(EYSOL.tlvl.nds[i],prm;case=:χτ);
+		EYSOL[:λ].ys[i] = λ(EYSOL[:λ].tlvl.nds[:,i],prm;case=:χτ);
+		EYSOL[:α].ys[i] = α(EYSOL[:α].tlvl.nds[:,i],prm;case=:χτ);
+		EYSOL[:γ].ys[i] = γ(EYSOL[:γ].tlvl.nds[:,i],prm;case=:χτ);
 	end
 
 	if flagrt
@@ -209,24 +209,29 @@ function ∂YSOL(prm::Dict{Symbol,Float64})
 	# Define [t=0.] ∂-values
 	YSOL = Dict{Symbol,Yℓvℓ}();
 
-	yˢ = Vector{Float64}(undef,prm[:nnd]);
-	yᵛ = zeros(prm[:nnd]);
-	yⁱ = Vector{Float64}(undef,prm[:nnd]);
-	λs = Vector{Float64}(undef,prm[:nnd]);
-	αs = Vector{Float64}(undef,prm[:nnd]);
-	γs = Vector{Float64}(undef,prm[:nnd]);
-	for i=1:prm[:nnd]
-		yˢ[i] = fˢ(@view tlvl.nds[:,i],prm;case=:χτ);
-		yⁱ[i] = prm[:ρ]*fⁱ(@view tlvl.nds[:,i],prm;case=:χτ);
+	yˢ = Vector{Float64}(undef,Int64(prm[:nnd]));
+	yᵛ = zeros(Int64(prm[:nnd]));
+	yⁱ = Vector{Float64}(undef,Int64(prm[:nnd]));
+	λs = Vector{Float64}(undef,Int64(prm[:nnd]));
+	αs = Vector{Float64}(undef,Int64(prm[:nnd]));
+	γs = Vector{Float64}(undef,Int64(prm[:nnd]));
+	for i=1:Int64(prm[:nnd])
+		nd = @view tlvl.nds[:,i];
+		yˢ[i] = fˢ(nd,prm;case=:χτ);
+		yⁱ[i] = prm[:ρ]*fⁱ(nd,prm;case=:χτ);
 
-		λs[i] = λ(@view tlvl.nds[:,i],prm;case=:χτ);
-		αs[i] = α(@view tlvl.nds[:,i],prm;case=:χτ);
-		γs[i] = γ(@view tlvl.nds[:,i],prm;case=:χτ);
+		λs[i] = λ(nd,prm;case=:χτ);
+		αs[i] = α(nd,prm;case=:χτ);
+		γs[i] = γ(nd,prm;case=:χτ);
 	end
 	YSOL[:yˢ] = Yℓvℓ(tlvl,yˢ);
 	YSOL[:yᵛ] = Yℓvℓ(tlvl,yᵛ);
 	YSOL[:yⁱ] = Yℓvℓ(tlvl,yⁱ);
 	
+	YSOL[:λ] = Yℓvℓ(tlvl,λs);
+	YSOL[:α] = Yℓvℓ(tlvl,αs);
+	YSOL[:γ] = Yℓvℓ(tlvl,γs);
+
 	#  βyⁱ,λyˢ,Imαyᵛ
 	YSOL[:βyⁱ] = βy!(YSOL[:yⁱ],prm);
 	YSOL[:λyˢ] = λy!(YSOL[:yˢ],prm);
@@ -270,9 +275,9 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 		yaerr[3] = maximum(abs.(y2xmid[:yⁱ].ys-ynext[:yⁱ].ys));
 
 		# Compute the rel errors
-		yrerr[1] = yaerr[1]/(sum(abs.(ynow[:yˢ]))/prm[:nnd]);
-		yrerr[2] = yaerr[2]/(sum(abs.(ynow[:yᵛ]))/prm[:nnd]);
-		yrerr[3] = yaerr[3]/(sum(abs.(ynow[:yⁱ]))/prm[:nnd]);
+		yrerr[1] = yaerr[1]/(sum(abs.(ynow[:yˢ].ys))/prm[:nnd]);
+		yrerr[2] = yaerr[2]/(sum(abs.(ynow[:yᵛ].ys))/prm[:nnd]);
+		yrerr[3] = yaerr[3]/(sum(abs.(ynow[:yⁱ].ys))/prm[:nnd]);
 
 
 		# Act according to accepting or addapting the t-step
