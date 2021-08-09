@@ -287,6 +287,13 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 		if !flag
 			# Error tolerances not attained so adapt and iterate
 			δt *= .5;
+			
+			# Reset the ∫'s computed at midstep so euler! 
+			# recomputes at next iteration
+			for key in keys(ymid)
+				ymid[key].∫yds[:] = [NaN];
+			end
+
 			continue
 		end
 		
@@ -324,6 +331,10 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 			ynow[key].tlvl.τrg[:] = y2xmid[key].tlvl.τrg;
 			ynow[key].ys[:] = y2xmid[key].ys;
 			ynow[key].∫yds[:] = [NaN];
+		end
+
+		for key in keys(ymid)
+			ymid[key].∫yds[:] = [NaN];
 		end
 
 		# Try a larger time step and continue iteration
