@@ -20,6 +20,16 @@ function data()
 	#  Initial fraction vaccinated
 	prm[:ρ] = .3;
 
+	# Hazard rates
+	#  β
+	prm[:βa] = 1.;
+	prm[:βb] = 1.;
+	prm[:βη] = 1.; # mutated by ∂YSOL! to ensure continuity at (0,0)
+
+	#  γ
+	prm[:γc] = 1.;
+	prm[:γd] = 1.;
+
 	# Numerical discretization
 	#  Number nodes within each [t=t₀] set
 	prm[:nnd] = 3.;
@@ -53,8 +63,9 @@ function λ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of λ(s,t) given here	
-		val = 1.;
+		# Defintion of λ(s,t) given here
+		#  Note: need λ(s,0)≡0 for BC's
+		val = (t<=10. ? t : 10.);
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -78,7 +89,9 @@ function β(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of β(s,t) given here	
-		val = 1.;
+		val = prm[:βb]/prm[:βa]*exp(log(s/prm[:βa])*(prm[:βb]-1.));
+		val *= prm[:βη]; # used by ∂YSOL! to enforce BC 
+		                 # continuity at (0,0)
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -102,7 +115,7 @@ function α(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of α(s,t) given here	
-		val = 1.;
+		val = .92/14*(s<=14 ? s : 14);
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -125,8 +138,8 @@ function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of α(s,t) given here	
-		val = 1.;
+		# Defintion of γ(s,t) given here	
+		val = prm[:γd]/prm[:γc]*exp(log(s/prm[:γc])*(prm[:γd]-1));
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -149,8 +162,8 @@ function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of α(s,t) given here	
-		val = 1.;
+		# Defintion of fˢ given here	
+		val = 1. /prm[:L];
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -173,8 +186,8 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of α(s,t) given here	
-		val = 1.;
+		# Defintion of fⁱ given here	
+		val = 1. /prm[:L];
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);

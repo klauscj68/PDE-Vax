@@ -198,24 +198,28 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 
 end
 
-# ∂YSOL
+# ∂YSOL!
 """
-Routine to define the boundary data at the [t=0.] level
+Routine to define the boundary data at the [t=0.] level. Mutates the 
+prm[:βa] entry so that ∂yⁱ is continuous at origin
 """
-function ∂YSOL(prm::Dict{Symbol,Float64})
+function ∂YSOL!(prm::Dict{Symbol,Float64})
+	nnd = Int64(prm[:nnd]);
+
 	# Define initial geometry
-	tlvl = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:L],Int64(prm[:nnd]))) );
+	tlvl = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:L],nnd)) );
 	
 	# Define [t=0.] ∂-values
 	YSOL = Dict{Symbol,Yℓvℓ}();
 
-	yˢ = Vector{Float64}(undef,Int64(prm[:nnd]));
-	yᵛ = zeros(Int64(prm[:nnd]));
-	yⁱ = Vector{Float64}(undef,Int64(prm[:nnd]));
-	λs = Vector{Float64}(undef,Int64(prm[:nnd]));
-	αs = Vector{Float64}(undef,Int64(prm[:nnd]));
-	γs = Vector{Float64}(undef,Int64(prm[:nnd]));
-	for i=1:Int64(prm[:nnd])
+	yˢ = Vector{Float64}(undef,nnd);
+	yᵛ = zeros(nnd);
+	yⁱ = Vector{Float64}(undef,nnd);
+	λs = Vector{Float64}(undef,nnd);
+	αs = Vector{Float64}(undef,nnd);
+	γs = Vector{Float64}(undef,nnd);
+	βfⁱ = Vector{Float64}(undef,nnd);
+	@inbounds for i=1:nnd
 		nd = @view tlvl.nds[:,i];
 		yˢ[i] = fˢ(nd,prm;case=:χτ);
 		yⁱ[i] = prm[:ρ]*fⁱ(nd,prm;case=:χτ);
@@ -223,6 +227,8 @@ function ∂YSOL(prm::Dict{Symbol,Float64})
 		λs[i] = λ(nd,prm;case=:χτ);
 		αs[i] = α(nd,prm;case=:χτ);
 		γs[i] = γ(nd,prm;case=:χτ);
+
+		βfⁱ[i] = β(nd,prm;case=:χτ)*fⁱ(nd,prm;case=:χτ);
 	end
 	YSOL[:yˢ] = Yℓvℓ(tlvl,yˢ);
 	YSOL[:yᵛ] = Yℓvℓ(tlvl,yᵛ);
@@ -231,6 +237,10 @@ function ∂YSOL(prm::Dict{Symbol,Float64})
 	YSOL[:λ] = Yℓvℓ(tlvl,λs);
 	YSOL[:α] = Yℓvℓ(tlvl,αs);
 	YSOL[:γ] = Yℓvℓ(tlvl,γs);
+
+	#  Adjust β to be compatible with cont BC's at (0,0)
+	∫βfⁱds = ∫line(Yℓvℓ(tlvl,βfⁱ));
+	prm[:βη] = fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
 
 	#  βyⁱ,λyˢ,Imαyᵛ
 	YSOL[:βyⁱ] = βy!(YSOL[:yⁱ],prm);
@@ -251,7 +261,7 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 	SOL = Vector{Dict{Symbol,Yℓvℓ}}(undef,ntdwn);
 	
 	# Setup ∂-[t=0] data
-	SOL[1] = ∂YSOL(prm);
+	SOL[1] = ∂YSOL!(prm);
 
 	# Adaptive Euler step requires 4 Yℓvℓ mem locs for writing output
 	ynow = deepcopy(SOL[1]); ynext = deepcopy(ynow);

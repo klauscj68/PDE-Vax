@@ -250,9 +250,9 @@ NOTE: Assumes the ypts all have same snds values, ie are the same spatial
 """
 function myinterp(tpts::VecVw,ypts::Vector{Yℓvℓ},teval::Float64)
 	if teval <= tpts[1]
-		val = ypts[1];
+		val = deepcopy(ypts[1]);
 	elseif teval >= tpts[end]
-		val = ypts[end];
+		val = deepcopy(ypts[end]);
 	else
 		pos = myfindfirst(tpts,teval);
 		t1,t2 = tpts[pos-1:pos];
