@@ -201,7 +201,7 @@ end
 # ∂YSOL!
 """
 Routine to define the boundary data at the [t=0.] level. Mutates the 
-prm[:βa] entry so that ∂yⁱ is continuous at origin
+prm[:βη] entry so that ∂yⁱ is continuous at origin
 """
 function ∂YSOL!(prm::Dict{Symbol,Float64})
 	nnd = Int64(prm[:nnd]);
@@ -268,7 +268,7 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 	ymid = deepcopy(ynow); y2xmid = deepcopy(ynow);
 	
 	pos = 2; # indicates which taxis value is next to surpass
-	δt = prm[:δt]; # initial guess of adaptive Euler step
+	δt = prm[:δtmax]; # initial guess of adaptive Euler step
 	yaerr = [0.,0.,0.]; # stores the ODE solver absolute error
 	yrerr = [0.,0.,0.]; # stores the ODE solver relative error
 	while pos <= ntdwn

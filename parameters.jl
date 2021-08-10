@@ -27,8 +27,8 @@ function data()
 	prm[:βη] = 1.; # mutated by ∂YSOL! to ensure continuity at (0,0)
 
 	#  γ
-	prm[:γc] = 1.;
-	prm[:γd] = 1.;
+	prm[:γa] = 1.;
+	prm[:γb] = 1.;
 
 	# Numerical discretization
 	#  Number nodes within each [t=t₀] set
@@ -89,7 +89,7 @@ function β(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of β(s,t) given here	
-		val = prm[:βb]/prm[:βa]*exp(log(s/prm[:βa])*(prm[:βb]-1.));
+		val = prm[:βb]/prm[:βa]*real( (s/prm[:βa]+0im)^(prm[:βb]-1.) );
 		val *= prm[:βη]; # used by ∂YSOL! to enforce BC 
 		                 # continuity at (0,0)
 	
@@ -139,7 +139,9 @@ function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of γ(s,t) given here	
-		val = prm[:γd]/prm[:γc]*exp(log(s/prm[:γc])*(prm[:γd]-1));
+		val = (s != 0 ? 
+		        prm[:γb]/prm[:γa]*real( (s/prm[:γa]+0im)^(prm[:γb]-1.) )
+			: 0.);
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
