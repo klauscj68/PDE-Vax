@@ -292,17 +292,42 @@ end
 # Solution integrations
 function ∫line(ylvl::Yℓvℓ)
 	nds = ylvl.tlvl.nds;
+	χs = @view ylvl.tlvl.nds[1,:];
 	ys = ylvl.ys;
 	nnd = size(nds)[2];
 
 	∫val = 0.;
-	@inbounds for i=1:nnd-1
-		f1 = ys[i]*(ys[i] >= 0 ? 1 : 1/√(3));
-		f2 = ys[i+1]*(ys[i+1] >= 0 ? 1 : 1/√(3));
 
-		Δs = nds[:,i+1] - nds[:,i];
-		ds = √(Δs[1]^2+Δs[2]^2);
-		∫val += .5*(f1+f2)*ds;
+	@inbounds for i=1:nnd-1
+		ndm1 = @view nds[:,i];
+		ndp1 = @view nds[:,i+1];
+		# Split up integral into [χ<0] and [χ>0] so that in ODE
+		# integration δt→0 can make error small ind of space 
+		# discretization
+		if (χs[i]<0)&&(χs[i+1]>0)
+			nd0 = γℓvℓ(ylvl.tlvl.t₀[1],0.);
+			f0 = eval(ylvl,0.);
+
+			# Integral in [χ<0]
+			Δs = nd0 - ndm1;
+			ds = √(Δs[1]^2+Δs[2]^2);
+			
+			∫val += .5/√(3)*(ys[i]+f0);
+
+			# Intergal in [χ>=0]
+			Δs = ndp1 - nd0;
+			ds = √(Δs[1]^2+Δs[2]^2);
+
+			∫val += .5*(f0+ys[i+1]);
+		else
+			# Interval has same sign
+			f1 = ys[i]*(χs[i] >= 0 ? 1 : 1/√(3));
+			f2 = ys[i+1]*(χs[i] >= 0 ? 1 : 1/√(3));
+
+			Δs = ndp1 - ndm1;
+			ds = √(Δs[1]^2+Δs[2]^2);
+			∫val += .5*(f1+f2)*ds;
+		end
 	end
 	
 	return ∫val
