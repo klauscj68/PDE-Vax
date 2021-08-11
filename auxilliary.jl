@@ -144,22 +144,22 @@ function Tℓvℓ!(t₀::Float64,tlvl0::Tℓvℓ,tlvl::Tℓvℓ)
 	# Overwrite fields of tlvl to new values
 	tlvl.t₀[1] = t₀;
 	
-	@timeit "Tℓvℓ!:q" q = [0.,t₀];
-	@timeit "Tℓvℓ!:snds0" snds0 = tlvl0.snds;
-	@timeit "Tℓvℓ!:nds" nds = tlvl.nds;
-	@timeit "Tℓvℓ!:assign snds0" tlvl.snds[:] = snds0;
+	q = [0.,t₀];
+	snds0 = tlvl0.snds;
+	nds = tlvl.nds;
+	tlvl.snds[:] = snds0;
 	@inbounds for i=tlvl.nnd:-1:2
 		q[1] = snds0[i];
-		@timeit "Tℓvℓ!:Fst" nds[:,i] = Fst(q);
+		nds[:,i] = Fst(q);
 	end
 
-	@timeit "Tℓvℓ!:∂nd" nds[:,1] = [-t₀,0.];
+	nds[:,1] = [-t₀,0.];
 
-	@timeit "Tℓvℓ!:min/max" χmin,τmin = minimum(nds,dims=2);
-	@timeit "Tℓvℓ!:min/max" χmax,τmax = maximum(nds,dims=2);
+	χmin,τmin = minimum(nds,dims=2);
+	χmax,τmax = maximum(nds,dims=2);
 
-	@timeit "Tℓvℓ!:rg" tlvl.χrg[:] = [χmin,χmax];
-	@timeit "Tℓvℓ!:rg" tlvl.τrg[:] = [τmin,τmax];
+	tlvl.χrg[:] = [χmin,χmax];
+	tlvl.τrg[:] = [τmin,τmax];
 end
 
 # Yℓvℓ
