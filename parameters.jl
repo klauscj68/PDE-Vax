@@ -30,6 +30,10 @@ function data()
 	prm[:γa] = 1.;
 	prm[:γb] = 1.;
 
+	#  Initial populations
+	prm[:fˢη] = 1.; # mutated by ∂YSOL! to ensure prob distribution
+	prm[:fⁱη] = 1.; # mutated by ∂YSOL! to ensure prob distribution
+
 	# Numerical discretization
 	#  Number nodes within each [t=t₀] set
 	prm[:nnd] = 3.;
@@ -165,8 +169,9 @@ function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fˢ given here	
-		val = 1. /prm[:L];
-	
+		val = (s>= prm[:L]/2)*(2. /prm[:L]);
+		val *= prm[:fˢη];
+
 	elseif case == :χτ
 		newpt = Fχτ(pt);
 		val = fˢ(newpt,prm;case=:st);
@@ -190,7 +195,8 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		
 		# Defintion of fⁱ given here	
 		val = 1. /prm[:L];
-	
+		val *= prm[:fⁱη];
+
 	elseif case == :χτ
 		newpt = Fχτ(pt);
 		val = fⁱ(newpt,prm;case=:st);

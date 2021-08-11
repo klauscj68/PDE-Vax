@@ -218,7 +218,34 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 	λs = Vector{Float64}(undef,nnd);
 	αs = Vector{Float64}(undef,nnd);
 	γs = Vector{Float64}(undef,nnd);
-	βfⁱ = Vector{Float64}(undef,nnd);
+	vβ = Vector{Float64}(undef,nnd);
+	vfˢ = Vector{Float64}(undef,nnd);
+	vfⁱ = Vector{Float64}(undef,nnd);
+	
+	# Adjust fˢ,fⁱ to be probability distributions
+	@inbounds for i=1:nnd
+		nd = @view tlvl.nds[:,i];
+		vfˢ[i] = fˢ(nd,prm;case=:χτ);
+		vfⁱ[i] = fⁱ(nd,prm;case=:χτ);
+	end
+	
+	#  Record the scaling
+	∫fˢds = ∫line(Yℓvℓ(tlvl,vfˢ));
+	∫fⁱds = ∫line(Yℓvℓ(tlvl,vfⁱ));
+
+	prm[:fˢη] *= 1/∫fˢds; vfˢ *= prm[:fˢη];
+	prm[:fⁱη] *= 1/∫fⁱds; vfⁱ *= prm[:fⁱη];
+	
+	# Adjust the β to be compatible with cont BC's at (0,0)
+	@inbounds for i=1:nnd
+		nd = @view tlvl.nds[:,i];
+		vβ[i] = β(nd,prm;case=:χτ);
+	end
+
+	∫βfⁱds = ∫line(Yℓvℓ(tlvl,vβ.*vfⁱ));
+	prm[:βη] *= fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
+
+	# Compute initial values for YSOL
 	@inbounds for i=1:nnd
 		nd = @view tlvl.nds[:,i];
 		yˢ[i] = fˢ(nd,prm;case=:χτ);
@@ -228,7 +255,7 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 		αs[i] = α(nd,prm;case=:χτ);
 		γs[i] = γ(nd,prm;case=:χτ);
 
-		βfⁱ[i] = β(nd,prm;case=:χτ)*fⁱ(nd,prm;case=:χτ);
+		vβ[i] = β(nd,prm;case=:χτ);
 	end
 	YSOL[:yˢ] = Yℓvℓ(tlvl,yˢ);
 	YSOL[:yᵛ] = Yℓvℓ(tlvl,yᵛ);
@@ -237,10 +264,6 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 	YSOL[:λ] = Yℓvℓ(tlvl,λs);
 	YSOL[:α] = Yℓvℓ(tlvl,αs);
 	YSOL[:γ] = Yℓvℓ(tlvl,γs);
-
-	#  Adjust β to be compatible with cont BC's at (0,0)
-	∫βfⁱds = ∫line(Yℓvℓ(tlvl,βfⁱ));
-	prm[:βη] = fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
 
 	#  βyⁱ,λyˢ,Imαyᵛ
 	YSOL[:βyⁱ] = βy!(YSOL[:yⁱ],prm);

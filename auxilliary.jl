@@ -312,13 +312,13 @@ function ∫line(ylvl::Yℓvℓ)
 			Δs = nd0 - ndm1;
 			ds = √(Δs[1]^2+Δs[2]^2);
 			
-			∫val += .5/√(3)*(ys[i]+f0);
+			∫val += .5/√(3)*(ys[i]+f0)*ds;
 
 			# Intergal in [χ>=0]
 			Δs = ndp1 - nd0;
 			ds = √(Δs[1]^2+Δs[2]^2);
 
-			∫val += .5*(f0+ys[i+1]);
+			∫val += .5*(f0+ys[i+1])*ds;
 		else
 			# Interval has same sign
 			f1 = ys[i]*(χs[i] >= 0 ? 1 : 1/√(3));
