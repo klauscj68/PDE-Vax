@@ -104,6 +104,14 @@ struct Tℓvℓ
 
 		return new([t₀],nnd,nds,χrg,τrg,snds);
 	end	
+
+	function Tℓvℓ(t₀::Vector{Float64},nnd::Int64,nds::Matrix{Float64},
+		      χrg::Vector{Float64},τrg::Vector{Float64},
+		      snds::Vector{Float64})
+
+		return new(t₀,nnd,nds,χrg,τrg,snds)
+	end
+
 end
 
 # Tℓvℓ!
@@ -271,7 +279,7 @@ function myinterp(tpts::VecVw,ypts::Vector{Yℓvℓ},teval::Float64)
 		χrg = [χmin,χmax];
 		τrg = [τmin,τmax];
 
-		tlvl = Tℓvℓ(teval,nnd,nds,χrg,τrg,ypts[1].tlvl.snds);
+		tlvl = Tℓvℓ([teval],nnd,nds,χrg,τrg,ypts[1].tlvl.snds);
 
 		# Construct the ys
 		ys = (1-s)*ypts[pos-1].ys + s*ypts[pos].ys;

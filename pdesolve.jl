@@ -331,14 +331,16 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 		end
 		
 		# Error tolerances attained so accept	
-		tnow = ynow.tlvl.t₀[1]; tnext = y2xmid.tlvl.t₀[1];
+		tnow = ynow[:yˢ].tlvl.t₀[1]; tnext = y2xmid[:yˢ].tlvl.t₀[1];
 		if tnext >= taxis[pos]	
 			# We've passed a downsample t-value and will now store
 			posnext = (tnext < taxis[end] ? 
 				    myfindfirst(taxis,tnext) : ntdwn + 1 );
+			posnext = (pos == posnext ? posnext+1 : posnext);
 
 			# Interpolate the inbetween values
 			for i=pos:posnext-1
+				SOL[i] = Dict{Symbol,Yℓvℓ}();
 				SOL[i][:yˢ] = myinterp([tnow,tnext],[ynow[:yˢ],y2xmid[:yˢ]],taxis[i]);
 				SOL[i][:yᵛ] = myinterp([tnow,tnext],[ynow[:yᵛ],y2xmid[:yᵛ]],taxis[i]);
 				SOL[i][:yⁱ] = myinterp([tnow,tnext],[ynow[:yⁱ],y2xmid[:yⁱ]],taxis[i]);

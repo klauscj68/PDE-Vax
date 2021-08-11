@@ -39,10 +39,10 @@ function data()
 	prm[:nnd] = 3.;
 
 	#  Final t-time of integration
-	prm[:tfin] = 3.;
+	prm[:tfin] = 3e-5;
 
 	#   t-downsample used to save the solution along integration
-	prm[:δt] = 1.;
+	prm[:δt] = 1e-5;
 
 	#   tolerances for ode integration and maximum permitted 
 	#   integration step
