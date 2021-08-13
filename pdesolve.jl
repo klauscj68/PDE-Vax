@@ -281,8 +281,10 @@ end
 # vaxsolver
 """
 Integrate the vaccination system by an explicit Euler scheme with adaptive timestep
+flagprg says whether to print progress to standard out
 """
-function vaxsolver(prm::Dict{Symbol,Float64})
+function vaxsolver(prm::Dict{Symbol,Float64};
+		   flagprg::Bool=true)
 	# Intialize values and vectors for storing solution 
 	taxis = convert(Vector,0.: prm[:δt] : prm[:tfin]);
 	ntdwn = length(taxis);
@@ -361,6 +363,10 @@ function vaxsolver(prm::Dict{Symbol,Float64})
 
 			# Define new position
 			pos = posnext;
+
+			if flagprg&&(posnext <= ntdwn)
+				println("Solving for $posnext/$ntdwn ...");
+			end
 	
 		end
 		

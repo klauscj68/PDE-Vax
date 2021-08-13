@@ -119,7 +119,7 @@ function α(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of α(s,t) given here	
-		val = .92/14*(s<=14 ? s : 14);
+		val = 0. *.92/14*(s<=14 ? s : 14);
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -143,7 +143,7 @@ function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of γ(s,t) given here	
-		val = (s != 0 ? 
+		val = .001*(s != 0 ? 
 		        prm[:γb]/prm[:γa]*real( (s/prm[:γa]+0im)^(prm[:γb]-1.) )
 			: 0.);
 	
@@ -194,7 +194,7 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fⁱ given here	
-		val = 1. /prm[:L];
+		val = s <= 1 ? (prm[:L]-s)^2 : 81*maximum([0.,2-s]);
 		val *= prm[:fⁱη];
 
 	elseif case == :χτ
