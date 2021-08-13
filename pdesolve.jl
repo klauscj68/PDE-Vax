@@ -93,7 +93,8 @@ Note: Keep the EYSOL ∫yds fields NaN and then euler! will internally
       it is passed as YSOL
 """
 function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float64};
-		EYSOL::Dict{Symbol,Yℓvℓ}=Dict{Symbol,Yℓvℓ}())
+		EYSOL::Dict{Symbol,Yℓvℓ}=Dict{Symbol,Yℓvℓ}(),
+		updTℓvℓ::Vector{Symbol}=[:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ])
 	
 	nnd = YSOL[:yˢ].tlvl.nnd;
 	t₀ = YSOL[:yˢ].tlvl.t₀[1];	
@@ -135,14 +136,17 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	end
 
 	# Advance to new tlvl's for this Euler step
-	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); Tℓvℓ!(t₀+δt,YSOL[:λ].tlvl,EYSOL[:λ].tlvl);
-	Tℓvℓ!(t₀+δt,YSOL[:yᵛ].tlvl,EYSOL[:yᵛ].tlvl); Tℓvℓ!(t₀+δt,YSOL[:α].tlvl,EYSOL[:α].tlvl);
-	Tℓvℓ!(t₀+δt,YSOL[:yⁱ].tlvl,EYSOL[:yⁱ].tlvl); Tℓvℓ!(t₀+δt,YSOL[:γ].tlvl,EYSOL[:γ].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); 
+	for key in updTℓvℓ
+		if key != :yˢ
+			yˢtlvl = EYSOL[:yˢ].tlvl;
+			EYSOL[key].tlvl.t₀[:] = yˢtlvl.t₀;
+			EYSOL[key].tlvl.nds[:,:] = yˢtlvl.nds;
+			EYSOL[key].tlvl.χrg[:] = yˢtlvl.χrg;
+			EYSOL[key].tlvl.τrg[:] = yˢtlvl.τrg;
+		end
+	end
 	
-	Tℓvℓ!(t₀+δt,YSOL[:βyⁱ].tlvl,EYSOL[:βyⁱ].tlvl);
-	Tℓvℓ!(t₀+δt,YSOL[:λyˢ].tlvl,EYSOL[:λyˢ].tlvl);
-	Tℓvℓ!(t₀+δt,YSOL[:Imαyᵛ].tlvl,EYSOL[:Imαyᵛ].tlvl);
-
 	# Update the ∂-nodal solution value at (χ,τ) = (-t₀,0)
 	EYSOL[:yˢ].ys[1] = 0.;
 	EYSOL[:yᵛ].ys[1] = ∫λyˢds;
@@ -286,6 +290,7 @@ flagprg says whether to print progress to standard out
 function vaxsolver(prm::Dict{Symbol,Float64};
 		   flagprg::Bool=true)
 	# Intialize values and vectors for storing solution 
+	updTℓvℓ = [:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ]; # a list to help reduce mem allocs
 	taxis = convert(Vector,0.: prm[:δt] : prm[:tfin]);
 	ntdwn = length(taxis);
 	SOL = Vector{Dict{Symbol,Yℓvℓ}}(undef,ntdwn);
@@ -303,11 +308,11 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 	yrerr = [0.,0.,0.]; # stores the ODE solver relative error
 	while pos <= ntdwn
 		# Compute the full step
-		euler!(δt,ynow,prm;EYSOL=ynext);
+		euler!(δt,ynow,prm;EYSOL=ynext,updTℓvℓ=updTℓvℓ);
 
 		# Compute the two half-steps
-		euler!(.5*δt,ynow,prm;EYSOL=ymid);
-		euler!(.5*δt,ymid,prm;EYSOL=y2xmid);
+		euler!(.5*δt,ynow,prm;EYSOL=ymid,updTℓvℓ=updTℓvℓ);
+		euler!(.5*δt,ymid,prm;EYSOL=y2xmid,updTℓvℓ=updTℓvℓ);
 
 		# Compute the abs errors
 		yaerr[1] = maximum(abs.(y2xmid[:yˢ].ys-ynext[:yˢ].ys));
