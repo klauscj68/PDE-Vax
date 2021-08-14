@@ -19,7 +19,7 @@ function βy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 	
 	for i=1:ylvl.tlvl.nnd
 		nd = @view ylvl.tlvl.nds[:,i];
-		βy.ys[i] = β(nd,prm;case=:χτ)*
+		@timeit "params" βy.ys[i] = β(nd,prm;case=:χτ)*
 		             ylvl.ys[i];
 	end
 
@@ -45,7 +45,7 @@ function λy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 
 	for i=1:ylvl.tlvl.nnd
 		nd = @view ylvl.tlvl.nds[:,i];
-		λy.ys[i] = λ(nd,prm;case=:χτ)*
+		@timeit "params" λy.ys[i] = λ(nd,prm;case=:χτ)*
 		             ylvl.ys[i];
 	end
 
@@ -72,7 +72,7 @@ function Imαy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 
 	for i=1:ylvl.tlvl.nnd
 		nd = @view ylvl.tlvl.nds[:,i];
-		Imαy.ys[i] = (1-α(nd,prm;case=:χτ))*
+		@timeit "params" Imαy.ys[i] = (1-α(nd,prm;case=:χτ))*
 			      ylvl.ys[i];
 	end
 
@@ -108,42 +108,42 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	# Compute needed integrals for forward Euler step
 	#  Note the integral value is constant within [t=t₀]
 	if isnan(YSOL[:βyⁱ].∫yds[1])
-		∫βyⁱds = ∫line(YSOL[:βyⁱ]);
+		@timeit "∫line" ∫βyⁱds = ∫line(YSOL[:βyⁱ]);
 		YSOL[:βyⁱ].∫yds[1] = ∫βyⁱds;
 	else
 		∫βyⁱds = YSOL[:βyⁱ].∫yds[1];
 	end
 
 	if isnan(YSOL[:λyˢ].∫yds[1])
-		∫λyˢds = ∫line(YSOL[:λyˢ]);
+		@timeit "∫line" ∫λyˢds = ∫line(YSOL[:λyˢ]);
 		YSOL[:λyˢ].∫yds[1] = ∫λyˢds;
 	else
 		∫λyˢds = YSOL[:λyˢ].∫yds[1];
 	end
 
 	if isnan(YSOL[:yˢ].∫yds[1])
-		∫yˢds = ∫line(YSOL[:yˢ]);
+		@timeit "∫line" ∫yˢds = ∫line(YSOL[:yˢ]);
 		YSOL[:yˢ].∫yds[1] = ∫yˢds;
 	else
 		∫yˢds = YSOL[:yˢ].∫yds[1];
 	end
 
 	if isnan(YSOL[:Imαyᵛ].∫yds[1])
-		∫Imαyᵛds = ∫line(YSOL[:Imαyᵛ]);
+		@timeit "∫line" ∫Imαyᵛds = ∫line(YSOL[:Imαyᵛ]);
 		YSOL[:Imαyᵛ].∫yds[1] = ∫Imαyᵛds;
 	else
 		∫Imαyᵛds = YSOL[:Imαyᵛ].∫yds[1];
 	end
 
 	# Advance to new tlvl's for this Euler step
-	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); 
+	@timeit "Tlvl" Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); 
 	for key in updTℓvℓ
 		if key != :yˢ
-			yˢtlvl = EYSOL[:yˢ].tlvl;
-			EYSOL[key].tlvl.t₀[:] = yˢtlvl.t₀;
-			EYSOL[key].tlvl.nds[:,:] = yˢtlvl.nds;
-			EYSOL[key].tlvl.χrg[:] = yˢtlvl.χrg;
-			EYSOL[key].tlvl.τrg[:] = yˢtlvl.τrg;
+			@timeit "Tlvl" yˢtlvl = EYSOL[:yˢ].tlvl;
+			@timeit "Tlvl" EYSOL[key].tlvl.t₀[:] = yˢtlvl.t₀;
+			@timeit "Tlvl" EYSOL[key].tlvl.nds[:,:] = yˢtlvl.nds;
+			@timeit "Tlvl" EYSOL[key].tlvl.χrg[:] = yˢtlvl.χrg;
+			@timeit "Tlvl" EYSOL[key].tlvl.τrg[:] = yˢtlvl.τrg;
 		end
 	end
 	
@@ -162,9 +162,9 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 			nd0 = γℓvℓ(t₀,nd[1]);
 			δτ = nd[2] - nd0[2];
 
-			yˢ₀ = myinterp(χsY,YSOL[:yˢ].ys,nd[1]);
-			yᵛ₀ = myinterp(χsY,YSOL[:yᵛ].ys,nd[1]);
-			yⁱ₀ = myinterp(χsY,YSOL[:yⁱ].ys,nd[1]);
+			@timeit "myinterp" yˢ₀ = myinterp(χsY,YSOL[:yˢ].ys,nd[1]);
+			@timeit "myinterp" yᵛ₀ = myinterp(χsY,YSOL[:yᵛ].ys,nd[1]);
+			@timeit "myinterp" yⁱ₀ = myinterp(χsY,YSOL[:yⁱ].ys,nd[1]);
 
 		else
 			# Node is overtop the ∂
@@ -172,18 +172,18 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 			δτ = nd[2];
 			
 			yˢ₀ = 0.;
-			yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
+			@timeit "myinterp" yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
 				       [ ∫λyˢds,YSOL[:yᵛ].ys[1] ],
 				       nd[1]);
-			yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
+			@timeit "myinterp" yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
 				       [ (∫yˢds + ∫Imαyᵛds)*∫βyⁱds,YSOL[:yⁱ].ys[1] ],
 				       nd[1]);
 
 		end
 
-		λ₀ = λ(nd0,prm;case=:χτ);
-		α₀ = α(nd0,prm;case=:χτ);
-		γ₀ = γ(nd0,prm;case=:χτ);
+		@timeit "params" λ₀ = λ(nd0,prm;case=:χτ);
+		@timeit "params" α₀ = α(nd0,prm;case=:χτ);
+		@timeit "params" γ₀ = γ(nd0,prm;case=:χτ);
 
 		EYSOL[:yˢ].ys[i] = yˢ₀ - 1/√(2)*yˢ₀*( λ₀ + ∫βyⁱds )*δτ;
 		EYSOL[:yᵛ].ys[i] = yᵛ₀ - 1/√(2)*yᵛ₀*( α₀ + (1-α₀)*∫βyⁱds )*δτ;
@@ -196,9 +196,9 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	Imαy!(EYSOL[:yᵛ],prm; Imαy=EYSOL[:Imαyᵛ]);
 
 	for i=1:nnd
-		EYSOL[:λ].ys[i] = λ(EYSOL[:λ].tlvl.nds[:,i],prm;case=:χτ);
-		EYSOL[:α].ys[i] = α(EYSOL[:α].tlvl.nds[:,i],prm;case=:χτ);
-		EYSOL[:γ].ys[i] = γ(EYSOL[:γ].tlvl.nds[:,i],prm;case=:χτ);
+		@timeit "params" EYSOL[:λ].ys[i] = λ(EYSOL[:λ].tlvl.nds[:,i],prm;case=:χτ);
+		@timeit "params" EYSOL[:α].ys[i] = α(EYSOL[:α].tlvl.nds[:,i],prm;case=:χτ);
+		@timeit "params" EYSOL[:γ].ys[i] = γ(EYSOL[:γ].tlvl.nds[:,i],prm;case=:χτ);
 	end
 
 	if flagrt
@@ -353,17 +353,17 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 			# Interpolate the inbetween values
 			for i=pos:posnext-1
 				SOL[i] = Dict{Symbol,Yℓvℓ}();
-				SOL[i][:yˢ] = myinterp([tnow,tnext],[ynow[:yˢ],y2xmid[:yˢ]],taxis[i]);
-				SOL[i][:yᵛ] = myinterp([tnow,tnext],[ynow[:yᵛ],y2xmid[:yᵛ]],taxis[i]);
-				SOL[i][:yⁱ] = myinterp([tnow,tnext],[ynow[:yⁱ],y2xmid[:yⁱ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:yˢ] = myinterp([tnow,tnext],[ynow[:yˢ],y2xmid[:yˢ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:yᵛ] = myinterp([tnow,tnext],[ynow[:yᵛ],y2xmid[:yᵛ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:yⁱ] = myinterp([tnow,tnext],[ynow[:yⁱ],y2xmid[:yⁱ]],taxis[i]);
 
-				SOL[i][:λ] = myinterp([tnow,tnext],[ynow[:λ],y2xmid[:λ]],taxis[i]);
-				SOL[i][:α] = myinterp([tnow,tnext],[ynow[:α],y2xmid[:α]],taxis[i]);
-				SOL[i][:γ] = myinterp([tnow,tnext],[ynow[:γ],y2xmid[:γ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:λ] = myinterp([tnow,tnext],[ynow[:λ],y2xmid[:λ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:α] = myinterp([tnow,tnext],[ynow[:α],y2xmid[:α]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:γ] = myinterp([tnow,tnext],[ynow[:γ],y2xmid[:γ]],taxis[i]);
 
-				SOL[i][:βyⁱ] = myinterp([tnow,tnext],[ynow[:βyⁱ],y2xmid[:βyⁱ]],taxis[i]);
-				SOL[i][:λyˢ] = myinterp([tnow,tnext],[ynow[:λyˢ],y2xmid[:λyˢ]],taxis[i]);
-				SOL[i][:Imαyᵛ] = myinterp([tnow,tnext],[ynow[:Imαyᵛ],y2xmid[:Imαyᵛ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:βyⁱ] = myinterp([tnow,tnext],[ynow[:βyⁱ],y2xmid[:βyⁱ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:λyˢ] = myinterp([tnow,tnext],[ynow[:λyˢ],y2xmid[:λyˢ]],taxis[i]);
+				@timeit "Ymyinterp" SOL[i][:Imαyᵛ] = myinterp([tnow,tnext],[ynow[:Imαyᵛ],y2xmid[:Imαyᵛ]],taxis[i]);
 			end
 
 			# Define new position
