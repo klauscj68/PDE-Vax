@@ -21,14 +21,14 @@ function data()
 	prm[:ρ] = .3;
 
 	# Hazard rates
-	#  β
+	#  β: after BC enforcement leads to mean of 1.38*Γ(1.5)
 	prm[:βa] = 1.;
-	prm[:βb] = 1.;
+	prm[:βb] = 2.;
 	prm[:βη] = 1.; # mutated by ∂YSOL! to ensure continuity at (0,0)
 
-	#  γ
-	prm[:γa] = 1.;
-	prm[:γb] = 1.;
+	#  γ: mean of 2Γ(3.35)
+	prm[:γa] = 2.;
+	prm[:γb] = 0.425531914893617;
 
 	#  Initial populations
 	prm[:fˢη] = 1.; # mutated by ∂YSOL! to ensure prob distribution
@@ -36,7 +36,7 @@ function data()
 
 	# Numerical discretization
 	#  Number nodes within each [t=t₀] set
-	prm[:nnd] = 3.;
+	prm[:nnd] = 20.;
 
 	#   t-downsample used to save the solution along integration
 	prm[:δt] = 1e-5;
@@ -117,7 +117,7 @@ function α(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of α(s,t) given here	
-		val = 0. *.92/14*(s<=14 ? s : 14);
+		val = .92/14*(s<=14 ? s : 14);
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -141,9 +141,7 @@ function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of γ(s,t) given here	
-		val = .001*(s != 0 ? 
-		        prm[:γb]/prm[:γa]*real( (s/prm[:γa]+0im)^(prm[:γb]-1.) )
-			: 0.);
+		val = prm[:γb]/prm[:γa]*real( (s/prm[:γa]+0im)^(prm[:γb]-1.) );
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -167,7 +165,7 @@ function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fˢ given here	
-		val = (s>= prm[:L]/2)*(2. /prm[:L]);
+		val = (s/10)^2;
 		val *= prm[:fˢη];
 
 	elseif case == :χτ
