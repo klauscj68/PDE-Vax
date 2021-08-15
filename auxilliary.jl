@@ -344,3 +344,20 @@ function ∫line!(ylvl::Yℓvℓ)
 	∫yds = ∫line(ylvl);
 	ylvl.∫yds[1] = ∫yds;
 end
+
+#%% Miscellaneous
+"""
+Elementwise maximum between a scalar and a vector which mutates the 
+optional input w
+"""
+function mymax!(x::Float64,v::VecVw;
+	        w::VecVw=fill(NaN,length(v)))
+	flagrt = isnan(w[1]) ? true : false;
+	for i=1:length(w)
+		w[i] = x >= v[i] ? x : v[i];
+	end
+
+	if flagrt
+		return w
+	end
+end

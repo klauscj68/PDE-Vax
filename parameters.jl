@@ -14,7 +14,7 @@ function data()
 	prm[:L] = 10.;
 
 	#  Largest time
-	prm[:T] = 10.;	
+	prm[:T] = 4e-5;	
 
 	# Epidemic
 	#  Initial fraction vaccinated
@@ -38,9 +38,6 @@ function data()
 	#  Number nodes within each [t=t₀] set
 	prm[:nnd] = 3.;
 
-	#  Final t-time of integration
-	prm[:tfin] = 3e-5;
-
 	#   t-downsample used to save the solution along integration
 	prm[:δt] = 1e-5;
 
@@ -48,6 +45,7 @@ function data()
 	#   integration step
 	prm[:atol] = 1e-6;
 	prm[:rtol] = 1e-3;
+	prm[:rlow] = 5e-4; # least yval for rel error computation
 	prm[:δtmax] = prm[:δt];
 
 	return prm

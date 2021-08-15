@@ -19,7 +19,7 @@ function βy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 	
 	for i=1:ylvl.tlvl.nnd
 		nd = @view ylvl.tlvl.nds[:,i];
-		@timeit "params" βy.ys[i] = β(nd,prm;case=:χτ)*
+		βy.ys[i] = β(nd,prm;case=:χτ)*
 		             ylvl.ys[i];
 	end
 
@@ -45,7 +45,7 @@ function λy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 
 	for i=1:ylvl.tlvl.nnd
 		nd = @view ylvl.tlvl.nds[:,i];
-		@timeit "params" λy.ys[i] = λ(nd,prm;case=:χτ)*
+		λy.ys[i] = λ(nd,prm;case=:χτ)*
 		             ylvl.ys[i];
 	end
 
@@ -72,7 +72,7 @@ function Imαy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
 
 	for i=1:ylvl.tlvl.nnd
 		nd = @view ylvl.tlvl.nds[:,i];
-		@timeit "params" Imαy.ys[i] = (1-α(nd,prm;case=:χτ))*
+		Imαy.ys[i] = (1-α(nd,prm;case=:χτ))*
 			      ylvl.ys[i];
 	end
 
@@ -108,42 +108,42 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	# Compute needed integrals for forward Euler step
 	#  Note the integral value is constant within [t=t₀]
 	if isnan(YSOL[:βyⁱ].∫yds[1])
-		@timeit "∫line" ∫βyⁱds = ∫line(YSOL[:βyⁱ]);
+		∫βyⁱds = ∫line(YSOL[:βyⁱ]);
 		YSOL[:βyⁱ].∫yds[1] = ∫βyⁱds;
 	else
 		∫βyⁱds = YSOL[:βyⁱ].∫yds[1];
 	end
 
 	if isnan(YSOL[:λyˢ].∫yds[1])
-		@timeit "∫line" ∫λyˢds = ∫line(YSOL[:λyˢ]);
+		∫λyˢds = ∫line(YSOL[:λyˢ]);
 		YSOL[:λyˢ].∫yds[1] = ∫λyˢds;
 	else
 		∫λyˢds = YSOL[:λyˢ].∫yds[1];
 	end
 
 	if isnan(YSOL[:yˢ].∫yds[1])
-		@timeit "∫line" ∫yˢds = ∫line(YSOL[:yˢ]);
+		∫yˢds = ∫line(YSOL[:yˢ]);
 		YSOL[:yˢ].∫yds[1] = ∫yˢds;
 	else
 		∫yˢds = YSOL[:yˢ].∫yds[1];
 	end
 
 	if isnan(YSOL[:Imαyᵛ].∫yds[1])
-		@timeit "∫line" ∫Imαyᵛds = ∫line(YSOL[:Imαyᵛ]);
+		∫Imαyᵛds = ∫line(YSOL[:Imαyᵛ]);
 		YSOL[:Imαyᵛ].∫yds[1] = ∫Imαyᵛds;
 	else
 		∫Imαyᵛds = YSOL[:Imαyᵛ].∫yds[1];
 	end
 
 	# Advance to new tlvl's for this Euler step
-	@timeit "Tlvl" Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); 
+	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); 
 	for key in updTℓvℓ
 		if key != :yˢ
-			@timeit "Tlvl" yˢtlvl = EYSOL[:yˢ].tlvl;
-			@timeit "Tlvl" EYSOL[key].tlvl.t₀[:] = yˢtlvl.t₀;
-			@timeit "Tlvl" EYSOL[key].tlvl.nds[:,:] = yˢtlvl.nds;
-			@timeit "Tlvl" EYSOL[key].tlvl.χrg[:] = yˢtlvl.χrg;
-			@timeit "Tlvl" EYSOL[key].tlvl.τrg[:] = yˢtlvl.τrg;
+			yˢtlvl = EYSOL[:yˢ].tlvl;
+			EYSOL[key].tlvl.t₀[:] = yˢtlvl.t₀;
+			EYSOL[key].tlvl.nds[:,:] = yˢtlvl.nds;
+			EYSOL[key].tlvl.χrg[:] = yˢtlvl.χrg;
+			EYSOL[key].tlvl.τrg[:] = yˢtlvl.τrg;
 		end
 	end
 	
@@ -162,9 +162,9 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 			nd0 = γℓvℓ(t₀,nd[1]);
 			δτ = nd[2] - nd0[2];
 
-			@timeit "myinterp" yˢ₀ = myinterp(χsY,YSOL[:yˢ].ys,nd[1]);
-			@timeit "myinterp" yᵛ₀ = myinterp(χsY,YSOL[:yᵛ].ys,nd[1]);
-			@timeit "myinterp" yⁱ₀ = myinterp(χsY,YSOL[:yⁱ].ys,nd[1]);
+			yˢ₀ = myinterp(χsY,YSOL[:yˢ].ys,nd[1]);
+			yᵛ₀ = myinterp(χsY,YSOL[:yᵛ].ys,nd[1]);
+			yⁱ₀ = myinterp(χsY,YSOL[:yⁱ].ys,nd[1]);
 
 		else
 			# Node is overtop the ∂
@@ -172,18 +172,18 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 			δτ = nd[2];
 			
 			yˢ₀ = 0.;
-			@timeit "myinterp" yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
+			yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
 				       [ ∫λyˢds,YSOL[:yᵛ].ys[1] ],
 				       nd[1]);
-			@timeit "myinterp" yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
+			yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
 				       [ (∫yˢds + ∫Imαyᵛds)*∫βyⁱds,YSOL[:yⁱ].ys[1] ],
 				       nd[1]);
 
 		end
 
-		@timeit "params" λ₀ = λ(nd0,prm;case=:χτ);
-		@timeit "params" α₀ = α(nd0,prm;case=:χτ);
-		@timeit "params" γ₀ = γ(nd0,prm;case=:χτ);
+		λ₀ = λ(nd0,prm;case=:χτ);
+		α₀ = α(nd0,prm;case=:χτ);
+		γ₀ = γ(nd0,prm;case=:χτ);
 
 		EYSOL[:yˢ].ys[i] = yˢ₀ - 1/√(2)*yˢ₀*( λ₀ + ∫βyⁱds )*δτ;
 		EYSOL[:yᵛ].ys[i] = yᵛ₀ - 1/√(2)*yᵛ₀*( α₀ + (1-α₀)*∫βyⁱds )*δτ;
@@ -196,9 +196,9 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	Imαy!(EYSOL[:yᵛ],prm; Imαy=EYSOL[:Imαyᵛ]);
 
 	for i=1:nnd
-		@timeit "params" EYSOL[:λ].ys[i] = λ(EYSOL[:λ].tlvl.nds[:,i],prm;case=:χτ);
-		@timeit "params" EYSOL[:α].ys[i] = α(EYSOL[:α].tlvl.nds[:,i],prm;case=:χτ);
-		@timeit "params" EYSOL[:γ].ys[i] = γ(EYSOL[:γ].tlvl.nds[:,i],prm;case=:χτ);
+		EYSOL[:λ].ys[i] = λ(EYSOL[:λ].tlvl.nds[:,i],prm;case=:χτ);
+		EYSOL[:α].ys[i] = α(EYSOL[:α].tlvl.nds[:,i],prm;case=:χτ);
+		EYSOL[:γ].ys[i] = γ(EYSOL[:γ].tlvl.nds[:,i],prm;case=:χτ);
 	end
 
 	if flagrt
@@ -291,8 +291,9 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 		   flagprg::Bool=true)
 	# Intialize values and vectors for storing solution 
 	updTℓvℓ = [:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ]; # a list to help reduce mem allocs
-	taxis = convert(Vector,0.: prm[:δt] : prm[:tfin]);
+	taxis = convert(Vector,0.: prm[:δt] : prm[:T]);
 	ntdwn = length(taxis);
+	nnd = Int64(prm[:nnd]);
 	SOL = Vector{Dict{Symbol,Yℓvℓ}}(undef,ntdwn);
 	
 	# Setup ∂-[t=0] data
@@ -304,6 +305,8 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 	
 	pos = 2; # indicates which taxis value is next to surpass
 	δt = prm[:δtmax]; # initial guess of adaptive Euler step
+	err = Vector{Float64}(undef,nnd); # stores abs nodal errors at [t=tᵢ]
+	rerr = Vector{Float64}(undef,nnd); # stores rel nodal err normalization at [t=tᵢ]
 	yaerr = [0.,0.,0.]; # stores the ODE solver absolute error
 	yrerr = [0.,0.,0.]; # stores the ODE solver relative error
 	while pos <= ntdwn
@@ -314,22 +317,36 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 		euler!(.5*δt,ynow,prm;EYSOL=ymid,updTℓvℓ=updTℓvℓ);
 		euler!(.5*δt,ymid,prm;EYSOL=y2xmid,updTℓvℓ=updTℓvℓ);
 
-		# Compute the abs errors
-		yaerr[1] = maximum(abs.(y2xmid[:yˢ].ys-ynext[:yˢ].ys));
-		yaerr[2] = maximum(abs.(y2xmid[:yᵛ].ys-ynext[:yᵛ].ys));
-		yaerr[3] = maximum(abs.(y2xmid[:yⁱ].ys-ynext[:yⁱ].ys));
+		# Compute the yˢ errors
+		err[:] = abs.(y2xmid[:yˢ].ys-ynext[:yˢ].ys);
+		yaerr[1] = maximum(err);
+		mymax!(prm[:rlow],abs.(ynow[:yˢ].ys);w=rerr); 
+		yrerr[1] = maximum(err./rerr);
 
-		# Compute the rel errors
-		yrerr[1] = yaerr[1]/(sum(abs.(ynow[:yˢ].ys))/prm[:nnd]);
-		yrerr[2] = yaerr[2]/(sum(abs.(ynow[:yᵛ].ys))/prm[:nnd]);
-		yrerr[3] = yaerr[3]/(sum(abs.(ynow[:yⁱ].ys))/prm[:nnd]);
+		# Compute the yᵛ errors
+		err[:] = abs.(y2xmid[:yᵛ].ys-ynext[:yᵛ].ys);
+		yaerr[2] = maximum(err);
+		mymax!(prm[:rlow],abs.(ynow[:yᵛ].ys);w=rerr); 
+		yrerr[2] = maximum(err./rerr);
 
+		# Compute the yⁱ errors
+		err[:] = abs.(y2xmid[:yⁱ].ys-ynext[:yⁱ].ys);
+		yaerr[3] = maximum(err);
+		mymax!(prm[:rlow],abs.(ynow[:yⁱ].ys);w=rerr); 
+		yrerr[3] = maximum(err./rerr);
 
 		# Act according to accepting or addapting the t-step
-		flagδt = (yaerr .<= prm[:atol]).|(yrerr .<= prm[:rtol]);
-		flag = flagδt[1]&&flagδt[2]&&flagδt[3];
+		flagδt = true;
+		for i=1:3
+			if !flagδt
+				break
+			end
 
-		if !flag
+			flagδt = flagδt&&(yaerr[i]<=prm[:atol])&&(
+				          yrerr[i]<=prm[:rtol]);
+		end
+
+		if !flagδt
 			# Error tolerances not attained so adapt and iterate
 			δt *= .5;
 			
@@ -353,17 +370,17 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 			# Interpolate the inbetween values
 			for i=pos:posnext-1
 				SOL[i] = Dict{Symbol,Yℓvℓ}();
-				@timeit "Ymyinterp" SOL[i][:yˢ] = myinterp([tnow,tnext],[ynow[:yˢ],y2xmid[:yˢ]],taxis[i]);
-				@timeit "Ymyinterp" SOL[i][:yᵛ] = myinterp([tnow,tnext],[ynow[:yᵛ],y2xmid[:yᵛ]],taxis[i]);
-				@timeit "Ymyinterp" SOL[i][:yⁱ] = myinterp([tnow,tnext],[ynow[:yⁱ],y2xmid[:yⁱ]],taxis[i]);
+				SOL[i][:yˢ] = myinterp([tnow,tnext],[ynow[:yˢ],y2xmid[:yˢ]],taxis[i]);
+				SOL[i][:yᵛ] = myinterp([tnow,tnext],[ynow[:yᵛ],y2xmid[:yᵛ]],taxis[i]);
+				SOL[i][:yⁱ] = myinterp([tnow,tnext],[ynow[:yⁱ],y2xmid[:yⁱ]],taxis[i]);
 
-				@timeit "Ymyinterp" SOL[i][:λ] = myinterp([tnow,tnext],[ynow[:λ],y2xmid[:λ]],taxis[i]);
-				@timeit "Ymyinterp" SOL[i][:α] = myinterp([tnow,tnext],[ynow[:α],y2xmid[:α]],taxis[i]);
-				@timeit "Ymyinterp" SOL[i][:γ] = myinterp([tnow,tnext],[ynow[:γ],y2xmid[:γ]],taxis[i]);
+				SOL[i][:λ] = myinterp([tnow,tnext],[ynow[:λ],y2xmid[:λ]],taxis[i]);
+				SOL[i][:α] = myinterp([tnow,tnext],[ynow[:α],y2xmid[:α]],taxis[i]);
+				SOL[i][:γ] = myinterp([tnow,tnext],[ynow[:γ],y2xmid[:γ]],taxis[i]);
 
-				@timeit "Ymyinterp" SOL[i][:βyⁱ] = myinterp([tnow,tnext],[ynow[:βyⁱ],y2xmid[:βyⁱ]],taxis[i]);
-				@timeit "Ymyinterp" SOL[i][:λyˢ] = myinterp([tnow,tnext],[ynow[:λyˢ],y2xmid[:λyˢ]],taxis[i]);
-				@timeit "Ymyinterp" SOL[i][:Imαyᵛ] = myinterp([tnow,tnext],[ynow[:Imαyᵛ],y2xmid[:Imαyᵛ]],taxis[i]);
+				SOL[i][:βyⁱ] = myinterp([tnow,tnext],[ynow[:βyⁱ],y2xmid[:βyⁱ]],taxis[i]);
+				SOL[i][:λyˢ] = myinterp([tnow,tnext],[ynow[:λyˢ],y2xmid[:λyˢ]],taxis[i]);
+				SOL[i][:Imαyᵛ] = myinterp([tnow,tnext],[ynow[:Imαyᵛ],y2xmid[:Imαyᵛ]],taxis[i]);
 			end
 
 			# Define new position
