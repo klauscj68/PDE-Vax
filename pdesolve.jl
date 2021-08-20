@@ -136,15 +136,23 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	end
 
 	# Advance to new tlvl's for this Euler step
-	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl); 
+	Tℓvℓ!(t₀+δt,YSOL[:yˢ].tlvl,EYSOL[:yˢ].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:yᵛ].tlvl,EYSOL[:yᵛ].tlvl);
+	Tℓvℓ!(t₀+δt,YSOL[:yⁱ].tlvl,EYSOL[:yⁱ].tlvl);
 	for key in updTℓvℓ
-		if key != :yˢ
-			yˢtlvl = EYSOL[:yˢ].tlvl;
-			EYSOL[key].tlvl.t₀[:] = yˢtlvl.t₀;
-			EYSOL[key].tlvl.nds[:,:] = yˢtlvl.nds;
-			EYSOL[key].tlvl.χrg[:] = yˢtlvl.χrg;
-			EYSOL[key].tlvl.τrg[:] = yˢtlvl.τrg;
+		if (key == :yˢ)||(key == :yᵛ)||(key == :yⁱ)
+			continue
+		elseif (key == :λ)||(key == :λyˢ)
+			ytlvl = EYSOL[:yˢ].tlvl;
+		elseif (key == :α)||(key == :Imαyᵛ)
+			ytlvl = EYSOL[:yᵛ].tlvl;
+		else
+			ytlvl = EYSOL[:yⁱ].tlvl;
 		end
+		EYSOL[key].tlvl.t₀[:] = ytlvl.t₀;
+		EYSOL[key].tlvl.nds[:,:] = ytlvl.nds;
+		EYSOL[key].tlvl.χrg[:] = ytlvl.χrg;
+		EYSOL[key].tlvl.τrg[:] = ytlvl.τrg;
 	end
 	
 	# Update the ∂-nodal solution value at (χ,τ) = (-t₀,0)
@@ -153,43 +161,63 @@ function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float6
 	EYSOL[:yⁱ].ys[1] = (∫yˢds + ∫Imαyᵛds)*∫βyⁱds;
 	
 	# Update the non-∂ nodal solution values for this Euler step 
-	χsY = @view YSOL[:yˢ].tlvl.nds[1,:];
-	@inbounds for i=2:nnd
-		# Find value of solution directly underneath 
-		nd = @view EYSOL[:yˢ].tlvl.nds[:,i];
+	gen = [1,1]; ykey = :yˢ; χsY = @view YSOL[ykey].tlvl.nds[1,:];
+	@inbounds for i=1:3*(nnd-1)
+		# Cycle generator gen[1] is for yˢ,yᵛ,yⁱ while gen[2] is nd idx
+		if gen[2] != nnd
+			gen[2] += 1;
+		else
+			gen[1] += 1;
+			gen[2] = 2;
+			
+			if gen[1] == 2
+				ykey = :yᵛ;
+				χsY = @view YSOL[ykey].tlvl.nds[1,:];
+			else
+				ykey = :yⁱ
+				χsY = @view YSOL[ykey].tlvl.nds[1,:];
+			end
+		end
+
+		# Find value of solution directly underneath
+		nd = @view EYSOL[ykey].tlvl.nds[:,gen[2]];
 		if nd[1] >= χsY[1]
 			# Node is overtop the prior t level
 			nd0 = γℓvℓ(t₀,nd[1]);
 			δτ = nd[2] - nd0[2];
 
-			yˢ₀ = myinterp(χsY,YSOL[:yˢ].ys,nd[1]);
-			yᵛ₀ = myinterp(χsY,YSOL[:yᵛ].ys,nd[1]);
-			yⁱ₀ = myinterp(χsY,YSOL[:yⁱ].ys,nd[1]);
-
+			y₀ = myinterp(χsY,YSOL[ykey].ys,nd[1]);
 		else
 			# Node is overtop the ∂
 			nd0 = [nd[1],0.];
 			δτ = nd[2];
 			
-			yˢ₀ = 0.;
-			yᵛ₀ = myinterp([ EYSOL[:yᵛ].tlvl.nds[1,1],χsY[1] ],
-				       [ ∫λyˢds,YSOL[:yᵛ].ys[1] ],
-				       nd[1]);
-			yⁱ₀ = myinterp([ EYSOL[:yⁱ].tlvl.nds[1,1],χsY[1] ],
-				       [ (∫yˢds + ∫Imαyᵛds)*∫βyⁱds,YSOL[:yⁱ].ys[1] ],
-				       nd[1]);
-
+			if ykey == :yˢ
+				y₀ = 0.;
+			elseif ykey == :yᵛ
+				y₀ = myinterp([ EYSOL[ykey].tlvl.nds[1,1],χsY[1] ],
+					      [ ∫λyˢds,YSOL[ykey].ys[1] ],
+					      nd[1]);
+			elseif ykey == :yⁱ
+				y₀ = myinterp([ EYSOL[ykey].tlvl.nds[1,1],χsY[1] ],
+					      [ (∫yˢds + ∫Imαyᵛds)*∫βyⁱds,YSOL[ykey].ys[1] ],
+					      nd[1]);
+			end
 		end
-
-		λ₀ = λ(nd0,prm;case=:χτ);
-		α₀ = α(nd0,prm;case=:χτ);
-		γ₀ = γ(nd0,prm;case=:χτ);
-
-		EYSOL[:yˢ].ys[i] = yˢ₀ - 1/√(2)*yˢ₀*( λ₀ + ∫βyⁱds )*δτ;
-		EYSOL[:yᵛ].ys[i] = yᵛ₀ - 1/√(2)*yᵛ₀*( α₀ + (1-α₀)*∫βyⁱds )*δτ;
-		EYSOL[:yⁱ].ys[i] = yⁱ₀ - 1/√(2)*γ₀*yⁱ₀*δτ;
-	end	
-	
+		
+		# Compute flowfield contribution
+		if ykey == :yˢ
+			λ₀ = λ(nd0,prm;case=:χτ);
+			EYSOL[:yˢ].ys[gen[2]] = y₀ - 1/√(2)*y₀*( λ₀ + ∫βyⁱds )*δτ;
+		elseif ykey == :yᵛ
+			α₀ = α(nd0,prm;case=:χτ);
+			EYSOL[:yᵛ].ys[gen[2]] = y₀ - 1/√(2)*y₀*( α₀ + (1-α₀)*∫βyⁱds )*δτ;
+		else
+			γ₀ = γ(nd0,prm;case=:χτ);
+			EYSOL[:yⁱ].ys[gen[2]] = y₀ - 1/√(2)*γ₀*y₀*δτ;
+		end
+	end
+		
 	# Update the intermediate quantities
 	βy!(EYSOL[:yⁱ],prm; βy=EYSOL[:βyⁱ]);
 	λy!(EYSOL[:yˢ],prm; λy=EYSOL[:λyˢ]);
@@ -216,8 +244,10 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 	nnd = Int64(prm[:nnd]);
 
 	# Define initial geometry
-	tlvl = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:L],nnd)) );
-	
+	tlvl_yˢ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Ls],nnd)) );
+	tlvl_yᵛ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Lv],nnd)) );
+	tlvl_yⁱ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Li],nnd)) );
+
 	# Define [t=0.] ∂-values
 	YSOL = Dict{Symbol,Yℓvℓ}();
 
@@ -233,46 +263,50 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 	
 	# Adjust fˢ,fⁱ to be probability distributions
 	@inbounds for i=1:nnd
-		nd = @view tlvl.nds[:,i];
+		nd = @view tlvl_yˢ.nds[:,i];
 		vfˢ[i] = fˢ(nd,prm;case=:χτ);
+
+		nd = @view tlvl_yⁱ.nds[:,i];
 		vfⁱ[i] = fⁱ(nd,prm;case=:χτ);
 	end
 	
 	#  Record the scaling
-	∫fˢds = ∫line(Yℓvℓ(tlvl,vfˢ));
-	∫fⁱds = ∫line(Yℓvℓ(tlvl,vfⁱ));
+	∫fˢds = ∫line(Yℓvℓ(tlvl_yˢ,vfˢ));
+	∫fⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vfⁱ));
 
 	prm[:fˢη] *= 1/∫fˢds; vfˢ *= prm[:fˢη];
 	prm[:fⁱη] *= 1/∫fⁱds; vfⁱ *= prm[:fⁱη];
 	
 	# Adjust the β to be compatible with cont BC's at (0,0)
 	@inbounds for i=1:nnd
-		nd = @view tlvl.nds[:,i];
+		nd = @view tlvl_yⁱ.nds[:,i];
 		vβ[i] = β(nd,prm;case=:χτ);
 	end
 
-	∫βfⁱds = ∫line(Yℓvℓ(tlvl,vβ.*vfⁱ));
+	∫βfⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vβ.*vfⁱ));
 	prm[:βη] *= fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
 
 	# Compute initial values for YSOL
 	@inbounds for i=1:nnd
-		nd = @view tlvl.nds[:,i];
+		nd = @view tlvl_yˢ.nds[:,i];
 		yˢ[i] = fˢ(nd,prm;case=:χτ);
-		yⁱ[i] = prm[:ρ]*fⁱ(nd,prm;case=:χτ);
-
 		λs[i] = λ(nd,prm;case=:χτ);
-		αs[i] = α(nd,prm;case=:χτ);
-		γs[i] = γ(nd,prm;case=:χτ);
 
+		nd = @view tlvl_yᵛ.nds[:,i];
+		αs[i] = α(nd,prm;case=:χτ);
+
+		nd = @view tlvl_yⁱ.nds[:,i];
+		yⁱ[i] = prm[:ρ]*fⁱ(nd,prm;case=:χτ);
 		vβ[i] = β(nd,prm;case=:χτ);
+		γs[i] = γ(nd,prm;case=:χτ);
 	end
-	YSOL[:yˢ] = Yℓvℓ(tlvl,yˢ);
-	YSOL[:yᵛ] = Yℓvℓ(tlvl,yᵛ);
-	YSOL[:yⁱ] = Yℓvℓ(tlvl,yⁱ);
+	YSOL[:yˢ] = Yℓvℓ(tlvl_yˢ,yˢ);
+	YSOL[:yᵛ] = Yℓvℓ(tlvl_yᵛ,yᵛ);
+	YSOL[:yⁱ] = Yℓvℓ(tlvl_yⁱ,yⁱ);
 	
-	YSOL[:λ] = Yℓvℓ(tlvl,λs);
-	YSOL[:α] = Yℓvℓ(tlvl,αs);
-	YSOL[:γ] = Yℓvℓ(tlvl,γs);
+	YSOL[:λ] = Yℓvℓ(tlvl_yˢ,λs);
+	YSOL[:α] = Yℓvℓ(tlvl_yᵛ,αs);
+	YSOL[:γ] = Yℓvℓ(tlvl_yⁱ,γs);
 
 	#  βyⁱ,λyˢ,Imαyᵛ
 	YSOL[:βyⁱ] = βy!(YSOL[:yⁱ],prm);

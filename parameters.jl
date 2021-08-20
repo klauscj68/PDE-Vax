@@ -10,8 +10,10 @@ function data()
 	prm = Dict{Symbol,Float64}();
 	
 	# Domain
-	#  Largest age
-	prm[:L] = 10.;
+	#  Largest age by yˢ,yᵛ,yⁱ
+	prm[:Ls] = 90. *365; # up to 90 years
+	prm[:Lv] = 8. *31; # up to 8 months
+	prm[:Li] = 21.; # up to 21 days
 
 	#  Largest time
 	prm[:T] = 4e-5;	
@@ -190,7 +192,7 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fⁱ given here	
-		val = s <= 1 ? (prm[:L]-s)^2 : 81*maximum([0.,2-s]);
+		val = s <= 1 ? (prm[:Li]-s)^2 : 81*maximum([0.,2-s]);
 		val *= prm[:fⁱη];
 
 	elseif case == :χτ
