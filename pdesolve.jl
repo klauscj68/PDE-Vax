@@ -354,19 +354,19 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 		# Compute the yˢ errors
 		err[:] = abs.(y2xmid[:yˢ].ys-ynext[:yˢ].ys);
 		yaerr[1] = maximum(err);
-		mymax!(prm[:rlow],abs.(ynow[:yˢ].ys);w=rerr); 
+		mymax!(prm[:rlow],abs.(y2xmid[:yˢ].ys);w=rerr); 
 		yrerr[1] = maximum(err./rerr);
 
 		# Compute the yᵛ errors
 		err[:] = abs.(y2xmid[:yᵛ].ys-ynext[:yᵛ].ys);
 		yaerr[2] = maximum(err);
-		mymax!(prm[:rlow],abs.(ynow[:yᵛ].ys);w=rerr); 
+		mymax!(prm[:rlow],abs.(y2xmid[:yᵛ].ys);w=rerr); 
 		yrerr[2] = maximum(err./rerr);
 
 		# Compute the yⁱ errors
 		err[:] = abs.(y2xmid[:yⁱ].ys-ynext[:yⁱ].ys);
 		yaerr[3] = maximum(err);
-		mymax!(prm[:rlow],abs.(ynow[:yⁱ].ys);w=rerr); 
+		mymax!(prm[:rlow],abs.(y2xmid[:yⁱ].ys);w=rerr); 
 		yrerr[3] = maximum(err./rerr);
 
 		# Act according to accepting or addapting the t-step
@@ -376,8 +376,9 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 				break
 			end
 
-			flagδt = flagδt&&(yaerr[i]<=prm[:atol])&&(
-				          yrerr[i]<=prm[:rtol]);
+			flagδt = flagδt&&(
+					 (yaerr[i]<=prm[:atol])||(yrerr[i]<=prm[:rtol])
+					 );
 		end
 
 		if !flagδt
