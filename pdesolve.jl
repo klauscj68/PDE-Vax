@@ -452,15 +452,19 @@ Save the solution into a csv file for plotting and later analysis
 """
 function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}};
 	         fname::String="")
-	snds = SOL[1][:yˢ].tlvl.snds;
-	nnd = length(snds);
+	snds = Dict{Symbol,Vector{Float64}}(
+		    :yˢ=>SOL[1][:yˢ].tlvl.snds,:yᵛ=>SOL[1][:yᵛ].tlvl.snds,:yⁱ=>SOL[1][:yⁱ].tlvl.snds);
+	nnd = length(snds[:yˢ]);
 	ntdwn = length(SOL);
 
-	saxis = reshape(snds,(nnd,1));
+	yˢsaxis = reshape(snds[:yˢ],(nnd,1));
+	yᵛsaxis = reshape(snds[:yᵛ],(nnd,1));
+	yⁱsaxis = reshape(snds[:yⁱ],(nnd,1));
+
 	taxis = reshape(taxis,(ntdwn,1));
 
 	# Write the axis csv's
-	CSV.write(fname*"saxis.csv",DataFrame(saxis),writeheader=false);
+	CSV.write(fname*"saxis.csv",DataFrame([yˢsaxis yᵛsaxis yⁱsaxis]),header=["ys","yv","yi"]);
 	CSV.write(fname*"taxis.csv",DataFrame(taxis),writeheader=false);
 
 	# Write the solution csv's
