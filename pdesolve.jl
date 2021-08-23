@@ -340,9 +340,13 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 	pos = 2; # indicates which taxis value is next to surpass
 	δt = prm[:δtmax]; # initial guess of adaptive Euler step
 	err = Vector{Float64}(undef,nnd); # stores abs nodal errors at [t=tᵢ]
-	rerr = Vector{Float64}(undef,nnd); # stores rel nodal err normalization at [t=tᵢ]
+	rnrm = Vector{Float64}(undef,nnd); # stores rel nodal err normalization at [t=tᵢ]
 	yaerr = [0.,0.,0.]; # stores the ODE solver absolute error
 	yrerr = [0.,0.,0.]; # stores the ODE solver relative error
+	yrcap = Dict{Symbol,Float64}(# stores lower bd caps used to assess rel error
+				     # rel err's are wrt to densities over unit length
+				     :yˢ=>prm[:rlow]/prm[:Ls],:yᵛ=>prm[:rlow]/prm[:Lv],
+				     :yⁱ=>prm[:rlow]/prm[:Li]);
 	while pos <= ntdwn
 		# Compute the full step
 		euler!(δt,ynow,prm;EYSOL=ynext,updTℓvℓ=updTℓvℓ);
@@ -354,20 +358,20 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 		# Compute the yˢ errors
 		err[:] = abs.(y2xmid[:yˢ].ys-ynext[:yˢ].ys);
 		yaerr[1] = maximum(err);
-		mymax!(prm[:rlow],abs.(y2xmid[:yˢ].ys);w=rerr); 
-		yrerr[1] = maximum(err./rerr);
+		mymax!(yrcap[:yˢ],abs.(y2xmid[:yˢ].ys);w=rnrm); 
+		yrerr[1] = maximum(err./rnrm);
 
 		# Compute the yᵛ errors
 		err[:] = abs.(y2xmid[:yᵛ].ys-ynext[:yᵛ].ys);
 		yaerr[2] = maximum(err);
-		mymax!(prm[:rlow],abs.(y2xmid[:yᵛ].ys);w=rerr); 
-		yrerr[2] = maximum(err./rerr);
+		mymax!(yrcap[:yᵛ],abs.(y2xmid[:yᵛ].ys);w=rnrm); 
+		yrerr[2] = maximum(err./rnrm);
 
 		# Compute the yⁱ errors
 		err[:] = abs.(y2xmid[:yⁱ].ys-ynext[:yⁱ].ys);
 		yaerr[3] = maximum(err);
-		mymax!(prm[:rlow],abs.(y2xmid[:yⁱ].ys);w=rerr); 
-		yrerr[3] = maximum(err./rerr);
+		mymax!(yrcap[:yⁱ],abs.(y2xmid[:yⁱ].ys);w=rnrm); 
+		yrerr[3] = maximum(err./rnrm);
 
 		# Act according to accepting or addapting the t-step
 		flagδt = true;
@@ -474,8 +478,9 @@ end
 """
 Save the solution into a csv file for plotting and later analysis
 """
-function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}};
-		 fname::String="",∫yʳ::Vector{Float64}=[NaN])
+function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}},
+		 prm::Dict{Symbol,Float64};
+		 fname::String="")
 	snds = Dict{Symbol,Vector{Float64}}(
 		    :yˢ=>SOL[1][:yˢ].tlvl.snds,:yᵛ=>SOL[1][:yᵛ].tlvl.snds,:yⁱ=>SOL[1][:yⁱ].tlvl.snds);
 	nnd = length(snds[:yˢ]);
@@ -502,7 +507,6 @@ function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}};
 
 	CSV.write(fname*"ysol.csv",DataFrame(Y),writeheader=false);
 
-	if !isnan(∫yʳ[1])
-		CSV.write(fname*"yRsol.csv",DataFrame(reshape(∫yʳ,(ntdwn,1))),writeheader=false);
-	end
+	∫yʳ = ∫yʳds(taxis[:],SOL,prm);
+	CSV.write(fname*"yRsol.csv",DataFrame(reshape(∫yʳ,(ntdwn,1))),writeheader=false);
 end

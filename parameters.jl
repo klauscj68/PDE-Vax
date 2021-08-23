@@ -45,7 +45,7 @@ function data()
 
 	#   tolerances for ode integration and maximum permitted 
 	#   integration step
-	prm[:atol] = 1e-4;
+	prm[:atol] = 1e-9;
 	prm[:rtol] = 1e-2;
 	prm[:rlow] = 5e-3; # least yval for rel error computation
 	prm[:δtmax] = .5;
