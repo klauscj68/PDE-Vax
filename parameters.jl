@@ -12,11 +12,11 @@ function data()
 	# Domain
 	#  Largest age by yˢ,yᵛ,yⁱ
 	prm[:Ls] = 90. *365; # up to 90 years
-	prm[:Lv] = 8. *31; # up to 8 months
+	prm[:Lv] = 21.; # up to 8 months
 	prm[:Li] = 21.; # up to 21 days
 
 	#  Largest time
-	prm[:T] = 4e-5;	
+	prm[:T] = 31.;	
 
 	# Epidemic
 	#  Initial fraction vaccinated
@@ -38,17 +38,17 @@ function data()
 
 	# Numerical discretization
 	#  Number nodes within each [t=t₀] set
-	prm[:nnd] = 20.;
+	prm[:nnd] = 1225.;
 
 	#   t-downsample used to save the solution along integration
-	prm[:δt] = 1e-5;
+	prm[:δt] = .1;
 
 	#   tolerances for ode integration and maximum permitted 
 	#   integration step
-	prm[:atol] = 1e-6;
-	prm[:rtol] = 1e-3;
-	prm[:rlow] = 5e-4; # least yval for rel error computation
-	prm[:δtmax] = prm[:δt];
+	prm[:atol] = 1e-4;
+	prm[:rtol] = 1e-2;
+	prm[:rlow] = 5e-3; # least yval for rel error computation
+	prm[:δtmax] = .5;
 
 	return prm
 	
@@ -69,7 +69,8 @@ function λ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		
 		# Defintion of λ(s,t) given here
 		#  Note: need λ(s,0)≡0 for BC's
-		val = (t<=10. ? t : 10.);
+		val = 2 - abs(t/31 - 2);
+		val = val >= 0 ? val : 0.;
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -92,8 +93,10 @@ function β(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of β(s,t) given here	
-		val = prm[:βb]/prm[:βa]*real( (s/prm[:βa]+0im)^(prm[:βb]-1.) );
+		# Defintion of β(s,t) given here
+		ram = s/prm[:βa];
+		val = (ram >= 1e-6) ? prm[:βb]/prm[:βa]*real( (ram+0im)^(prm[:βb]-1.) ) : (
+						prm[:βb]/prm[:βa]*real( (1e-6+0im)^(prm[:βb]-1.) ) );
 		val *= prm[:βη]; # used by ∂YSOL! to enforce BC 
 		                 # continuity at (0,0)
 	
@@ -142,8 +145,10 @@ function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of γ(s,t) given here	
-		val = prm[:γb]/prm[:γa]*real( (s/prm[:γa]+0im)^(prm[:γb]-1.) );
+		# Defintion of γ(s,t) given here
+		ram = s/prm[:γa];
+		val = (ram >= 1e-6) ? prm[:γb]/prm[:γa]*real( (ram+0im)^(prm[:γb]-1.) ) : (
+			                 prm[:γb]/prm[:γa]*real( (1e-6+0im)^(prm[:γb]-1.) ) );
 	
 	elseif case == :χτ
 		newpt = Fχτ(pt);
@@ -167,7 +172,8 @@ function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fˢ given here	
-		val = (s/10)^2;
+		val = 45-abs(s/365-45);
+		val = val >= 0 ? val : 0.;
 		val *= prm[:fˢη];
 
 	elseif case == :χτ
@@ -192,7 +198,8 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fⁱ given here	
-		val = s <= 1 ? (prm[:Li]-s)^2 : 81*maximum([0.,2-s]);
+		val = 5-abs(s-5);
+		val = val >= 0 ? val : 0.;
 		val *= prm[:fⁱη];
 
 	elseif case == :χτ

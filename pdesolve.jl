@@ -375,9 +375,10 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 			if !flagδt
 				break
 			end
-
+			# Scale errors by the meas of axis they are densities over
+			λnorm = (i==1) ? prm[:Ls] : ( (i==2) ? prm[:Lv] : prm[:Li] )
 			flagδt = flagδt&&(
-					 (yaerr[i]<=prm[:atol])||(yrerr[i]<=prm[:rtol])
+					 (λnorm*yaerr[i]<=prm[:atol])||(yrerr[i]<=prm[:rtol])
 					 );
 		end
 
@@ -447,12 +448,34 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 	return taxis,SOL
 end
 
+# ∫yʳds
+"""
+Compute the aggregated recovery time series for the solution output by vaxsolver
+Note: prm should be the mutated dictionary output by vaxsolver
+"""
+function ∫yʳds(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}},prm::Dict{Symbol,Float64})
+	ntdwn = length(taxis);
+
+	# Initialize starting data
+	sol = Vector{Float64}(undef,ntdwn);
+	sol[1] = 0.;
+	for i=2:ntdwn
+		αyᵛ = Yℓvℓ(SOL[i][:yᵛ].tlvl,SOL[i][:yᵛ].ys.*SOL[i][:α].ys);
+		γyⁱ = Yℓvℓ(SOL[i][:yⁱ].tlvl,SOL[i][:yⁱ].ys.*SOL[i][:γ].ys);
+
+		flow = ∫line(αyᵛ) + ∫line(γyⁱ);
+		sol[i] = prm[:δt]*flow + sol[i-1];
+	end
+
+	return sol
+end
+
 # savesol
 """
 Save the solution into a csv file for plotting and later analysis
 """
 function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}};
-	         fname::String="")
+		 fname::String="",∫yʳ::Vector{Float64}=[NaN])
 	snds = Dict{Symbol,Vector{Float64}}(
 		    :yˢ=>SOL[1][:yˢ].tlvl.snds,:yᵛ=>SOL[1][:yᵛ].tlvl.snds,:yⁱ=>SOL[1][:yⁱ].tlvl.snds);
 	nnd = length(snds[:yˢ]);
@@ -478,4 +501,8 @@ function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}};
 	end
 
 	CSV.write(fname*"ysol.csv",DataFrame(Y),writeheader=false);
+
+	if !isnan(∫yʳ[1])
+		CSV.write(fname*"yRsol.csv",DataFrame(reshape(∫yʳ,(ntdwn,1))),writeheader=false);
+	end
 end
