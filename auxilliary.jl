@@ -1,11 +1,13 @@
 ## Suite of ancillary routines for solving the vaccination PDE system
+using SpecialFunctions
+
 #%% Aliases
 VecVw = Union{
 	      Vector{Float64},
 	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Int64, Base.Slice{Base.OneTo{Int64}}}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:]
 	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:] 
-	     }
-
+	     };
+DSymFl = Dict{Symbol,Float64};
 #%% Coordinate Transformation
 # γℓvℓ
 """
@@ -346,6 +348,7 @@ function ∫line!(ylvl::Yℓvℓ)
 end
 
 #%% Miscellaneous
+# mymax!
 """
 Elementwise maximum between a scalar and a vector which mutates the 
 optional input w
@@ -360,4 +363,107 @@ function mymax!(x::Float64,v::VecVw;
 	if flagrt
 		return w
 	end
+end
+
+# srefine
+"""
+Project a Yℓvℓ onto alternative space discretization
+"""
+function srefine(case::Symbol,prm::Dict{Symbol,Float64},
+		 ylvl::Yℓvℓ)
+	# Initialize
+	saxis = convert(Vector{Float64},0.: prm[:δs] : 1.);
+	saxis[end] = 1.;
+	nnd = length(saxis);
+	t₀ = ylvl.tlvl.t₀[1];		
+	
+	if case==:yˢ
+		saxis*=prm[:Ls];
+	elseif case==:yᵛ
+		saxis*=prm[:Lv];
+	elseif case==:yⁱ
+		saxis*=prm[:Li];
+	else
+		error("Not a valid refinement case");
+	end
+
+
+	# Project onto coarser space mesh
+	#  Compute tlvl's new nodes
+	χτs = Fst([reshape(saxis,1,nnd);
+		   repeat([t₀],1,nnd)]);
+	χs = χτs[1,:];
+	tlvl = Tℓvℓ(t₀,χs);
+
+	#  Compute yval's at new nodes
+	yval = Vector{Float64}(undef,nnd);
+	@inbounds for i=1:nnd
+		yval[i] = eval(ylvl,χs[i]);
+	end
+
+	return Yℓvℓ(tlvl,yval)
+end
+function srefine(case::Symbol,ylvl::Yℓvℓ,
+		 prm::Dict{Symbol,Float64})
+	return srefine(case,prm,ylvl)
+end
+
+# SOLrefine!
+"""
+Project the SOL vector output by PDE solver onto a coarser space mesh for
+saving. Mutates SOL.
+"""
+function SOLrefine!(prm::Dict{Symbol,Float64},
+		    SOL::Vector{Dict{Symbol,Yℓvℓ}})
+	Dkeys = [:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ];
+	ntdwn = length(SOL);
+	
+	gen=[1,0];
+	@inbounds for k=1:ntdwn*9
+		# i is dwnsmp and j is Dkeys
+		if gen[2]!=9
+			gen[2]+=1;
+		else
+			gen[1]+=1;
+			gen[2]=1;
+		end
+		i=gen[1]; j=gen[2];
+		key = Dkeys[j];
+		if (key in [:yˢ,:λ,:λyˢ])
+			SOL[i][key] = srefine(:yˢ,prm,SOL[i][key]);
+		elseif (key in [:yᵛ,:α,:Imαyᵛ])
+			SOL[i][key] = srefine(:yᵛ,prm,SOL[i][key]);
+		else
+			SOL[i][key] = srefine(:yⁱ,prm,SOL[i][key]);
+		end
+	end
+end
+function SOLrefine(prm::Dict{Symbol,Float64},
+		   SOL::Vector{Dict{Symbol,Yℓvℓ}})
+	SOLnew = deepcopy(SOL);
+	SOLrefine!(prm,SOLnew);
+
+	return SOLnew
+end
+
+# mβ
+"""
+Compute the mean of β using model parameters in case that β is a Weibull 
+distribution
+"""
+function mβ(prm::DSymFl)
+	b = prm[:βb];
+	a = prm[:βa]/real((prm[:βη]+0im)^(1/prm[:βb]));
+
+	return a*gamma(1+1/b)
+end
+
+# mγ
+"""
+Compute the mean of γ using model parameters in case that γ is a Weibull
+distribution
+"""
+function mγ(prm::DSymFl)
+
+	return prm[:γa]*gamma(1+1/prm[:γb])
 end

@@ -7,7 +7,7 @@ using CSV,DataFrames
 Compute βy at the nodes along Tℓvℓ. Routine mutates the optional
 argument βy.
 """
-function βy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
+function βy!(ylvl::Yℓvℓ,prm::DSymFl;
 	     βy::Yℓvℓ=Yℓvℓ(undef))
 
 	if isnan(βy.ys[1])
@@ -33,7 +33,7 @@ end
 Compute λy at the nodes along Tℓvℓ. Routine mutates the optional 
 argument λy
 """
-function λy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
+function λy!(ylvl::Yℓvℓ,prm::DSymFl;
 	     λy::Yℓvℓ=Yℓvℓ(undef))
 
 	if isnan(λy.ys[1])
@@ -60,7 +60,7 @@ end
 Compute (1-α)y at the nodes along Tℓvℓ. Routine mutates the optional
 argument Imαy
 """
-function Imαy!(ylvl::Yℓvℓ,prm::Dict{Symbol,Float64};
+function Imαy!(ylvl::Yℓvℓ,prm::DSymFl;
 	       Imαy::Yℓvℓ=Yℓvℓ(undef))
 	
 	if isnan(Imαy.ys[1])
@@ -92,7 +92,7 @@ Note: Keep the EYSOL ∫yds fields NaN and then euler! will internally
       mutate those integrals to their correct values when in later iteration
       it is passed as YSOL
 """
-function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::Dict{Symbol,Float64};
+function euler!(δt::Float64,YSOL::Dict{Symbol,Yℓvℓ},prm::DSymFl;
 		EYSOL::Dict{Symbol,Yℓvℓ}=Dict{Symbol,Yℓvℓ}(),
 		updTℓvℓ::Vector{Symbol}=[:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ])
 	
@@ -237,10 +237,13 @@ end
 
 # ∂YSOL!
 """
-Routine to define the boundary data at the [t=0.] level. Mutates the 
-prm[:βη] entry so that ∂yⁱ is continuous at origin
+Routine to define the boundary data at the [t=0.] level. 
 """
-function ∂YSOL!(prm::Dict{Symbol,Float64})
+function ∂YSOL!(prm::DSymFl)
+	# Compute dependant params as func of ind
+	data!(prm);
+	
+	# Compute the initial data
 	nnd = Int64(prm[:nnd]);
 
 	# Define initial geometry
@@ -257,35 +260,7 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 	λs = Vector{Float64}(undef,nnd);
 	αs = Vector{Float64}(undef,nnd);
 	γs = Vector{Float64}(undef,nnd);
-	vβ = Vector{Float64}(undef,nnd);
-	vfˢ = Vector{Float64}(undef,nnd);
-	vfⁱ = Vector{Float64}(undef,nnd);
 	
-	# Adjust fˢ,fⁱ to be probability distributions
-	@inbounds for i=1:nnd
-		nd = @view tlvl_yˢ.nds[:,i];
-		vfˢ[i] = fˢ(nd,prm;case=:χτ);
-
-		nd = @view tlvl_yⁱ.nds[:,i];
-		vfⁱ[i] = fⁱ(nd,prm;case=:χτ);
-	end
-	
-	#  Record the scaling
-	∫fˢds = ∫line(Yℓvℓ(tlvl_yˢ,vfˢ));
-	∫fⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vfⁱ));
-
-	prm[:fˢη] *= 1/∫fˢds; vfˢ *= prm[:fˢη];
-	prm[:fⁱη] *= 1/∫fⁱds; vfⁱ *= prm[:fⁱη];
-	
-	# Adjust the β to be compatible with cont BC's at (0,0)
-	@inbounds for i=1:nnd
-		nd = @view tlvl_yⁱ.nds[:,i];
-		vβ[i] = β(nd,prm;case=:χτ);
-	end
-
-	∫βfⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vβ.*vfⁱ));
-	prm[:βη] *= fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
-
 	# Compute initial values for YSOL
 	@inbounds for i=1:nnd
 		nd = @view tlvl_yˢ.nds[:,i];
@@ -297,7 +272,6 @@ function ∂YSOL!(prm::Dict{Symbol,Float64})
 
 		nd = @view tlvl_yⁱ.nds[:,i];
 		yⁱ[i] = prm[:ρ]*fⁱ(nd,prm;case=:χτ);
-		vβ[i] = β(nd,prm;case=:χτ);
 		γs[i] = γ(nd,prm;case=:χτ);
 	end
 	YSOL[:yˢ] = Yℓvℓ(tlvl_yˢ,yˢ);
@@ -321,7 +295,7 @@ end
 Integrate the vaccination system by an explicit Euler scheme with adaptive timestep
 flagprg says whether to print progress to standard out
 """
-function vaxsolver(prm::Dict{Symbol,Float64};
+function vaxsolver(prm::DSymFl;
 		   flagprg::Bool=true)
 	# Intialize values and vectors for storing solution 
 	updTℓvℓ = [:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ]; # a list to help reduce mem allocs
@@ -343,7 +317,7 @@ function vaxsolver(prm::Dict{Symbol,Float64};
 	rnrm = Vector{Float64}(undef,nnd); # stores rel nodal err normalization at [t=tᵢ]
 	yaerr = [0.,0.,0.]; # stores the ODE solver absolute error
 	yrerr = [0.,0.,0.]; # stores the ODE solver relative error
-	yrcap = Dict{Symbol,Float64}(# stores lower bd caps used to assess rel error
+	yrcap = DSymFl(# stores lower bd caps used to assess rel error
 				     # rel err's are wrt to densities over unit length
 				     :yˢ=>prm[:rlow]/prm[:Ls],:yᵛ=>prm[:rlow]/prm[:Lv],
 				     :yⁱ=>prm[:rlow]/prm[:Li]);
@@ -457,7 +431,7 @@ end
 Compute the aggregated recovery time series for the solution output by vaxsolver
 Note: prm should be the mutated dictionary output by vaxsolver
 """
-function ∫yʳds(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}},prm::Dict{Symbol,Float64})
+function ∫yʳds(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}},prm::DSymFl)
 	ntdwn = length(taxis);
 
 	# Initialize starting data
@@ -478,9 +452,11 @@ end
 """
 Save the solution into a csv file for plotting and later analysis
 """
-function savesol(taxis::Vector{Float64},SOL::Vector{Dict{Symbol,Yℓvℓ}},
-		 prm::Dict{Symbol,Float64};
+function savesol(taxis::Vector{Float64},SOL0::Vector{Dict{Symbol,Yℓvℓ}},
+		 prm::DSymFl;
 		 fname::String="")
+	
+	SOL = SOLrefine(prm,SOL0);
 	snds = Dict{Symbol,Vector{Float64}}(
 		    :yˢ=>SOL[1][:yˢ].tlvl.snds,:yᵛ=>SOL[1][:yᵛ].tlvl.snds,:yⁱ=>SOL[1][:yⁱ].tlvl.snds);
 	nnd = length(snds[:yˢ]);

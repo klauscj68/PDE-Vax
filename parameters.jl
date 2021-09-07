@@ -7,11 +7,11 @@
 Dictionary storing model scalar parameters
 """
 function data()
-	prm = Dict{Symbol,Float64}();
+	prm = DSymFl();
 	
 	# Domain
 	#  Largest age by yˢ,yᵛ,yⁱ
-	prm[:Ls] = 90. *365; # up to 90 years
+	prm[:Ls] = 100. *365; # up to 100 years
 	prm[:Lv] = 21.; # up to 8 months
 	prm[:Li] = 21.; # up to 21 days
 
@@ -23,14 +23,14 @@ function data()
 	prm[:ρ] = .3;
 
 	# Hazard rates
-	#  β: after BC enforcement leads to mean of 1.38*Γ(1.5)
-	prm[:βa] = 1.;
-	prm[:βb] = 2.;
+	#  β: Weibull distribution
+	prm[:βa] = .5;
+	prm[:βb] = 10.;
 	prm[:βη] = 1.; # mutated by ∂YSOL! to ensure continuity at (0,0)
 
-	#  γ: mean of 2Γ(3.35)
-	prm[:γa] = 2.;
-	prm[:γb] = 0.425531914893617;
+	#  γ: Weibull distributrion
+	prm[:γa] = 20.;
+	prm[:γb] = 1.5;
 
 	#  Initial populations
 	prm[:fˢη] = 1.; # mutated by ∂YSOL! to ensure prob distribution
@@ -40,18 +40,65 @@ function data()
 	#  Number nodes within each [t=t₀] set
 	prm[:nnd] = 1225.;
 
-	#   t-downsample used to save the solution along integration
+	#  downsamples used to save the solution along integration in space-time
 	prm[:δt] = .1;
+	prm[:δs] = .01; # relative length of axis
 
 	#   tolerances for ode integration and maximum permitted 
 	#   integration step
 	prm[:atol] = 1e-9;
-	prm[:rtol] = 1e-2;
-	prm[:rlow] = 5e-3; # least yval for rel error computation
-	prm[:δtmax] = .5;
+	prm[:rtol] = 1e-3;
+	prm[:rlow] = 1e-6; # least yval for rel error exactly enforced
+	prm[:δtmax] = 3.;
 
 	return prm
 	
+end
+# data!
+"""
+Mutate the prm dictionary so that all parameters depending on others are 
+properly set to those values
+"""
+function data!(prm::DSymFl)
+	#-----
+	# Compute normalization constants
+	nnd = Int64(prm[:nnd]);
+
+	#  Define initial geometry
+	tlvl_yˢ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Ls],nnd)) );
+	tlvl_yᵛ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Lv],nnd)) );
+	tlvl_yⁱ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Li],nnd)) );
+
+	vβ = Vector{Float64}(undef,nnd);
+	vfˢ = Vector{Float64}(undef,nnd);
+	vfⁱ = Vector{Float64}(undef,nnd);
+	
+	#  Adjust fˢ,fⁱ to be probability distributions
+	@inbounds for i=1:nnd
+		nd = @view tlvl_yˢ.nds[:,i];
+		vfˢ[i] = fˢ(nd,prm;case=:χτ);
+
+		nd = @view tlvl_yⁱ.nds[:,i];
+		vfⁱ[i] = fⁱ(nd,prm;case=:χτ);
+	end
+	
+	#   Record the scaling
+	∫fˢds = ∫line(Yℓvℓ(tlvl_yˢ,vfˢ));
+	∫fⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vfⁱ));
+
+	prm[:fˢη] *= 1/∫fˢds;
+	prm[:fⁱη] *= 1/∫fⁱds; vfⁱ *= prm[:fⁱη];
+	
+	#  Adjust the β to be compatible with cont BC's at (0,0)
+	@inbounds for i=1:nnd
+		nd = @view tlvl_yⁱ.nds[:,i];
+		vβ[i] = β(nd,prm;case=:χτ);
+	end
+
+	∫βfⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vβ.*vfⁱ));
+	prm[:βη] *= fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
+	prm[:βη] = (!isnan(prm[:βη])) ? (prm[:βη]) : 0.;
+
 end
 
 #%% Model function parameters
@@ -62,7 +109,7 @@ Defaults to λ(s,t) but optional case argument can be used to instead
 compute λ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function λ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
+function λ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
 	
 	if case == :st
 		s = pt[1]; t = pt[2];
@@ -89,7 +136,7 @@ Defaults to β(s,t) but optional case argument can be used to instead
 compute β(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function β(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
+function β(pt::VecVw,prm::DSymFl;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -117,7 +164,7 @@ Defaults to α(s,t) but optional case argument can be used to instead
 compute α(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function α(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
+function α(pt::VecVw,prm::DSymFl;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -141,7 +188,7 @@ Defaults to γ(s,t) but optional case argument can be used to instead
 compute γ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function γ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
+function γ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
@@ -167,13 +214,18 @@ Defaults to fˢ(s,t) but optional case argument can be used to instead
 compute fˢ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function fˢ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
+function fˢ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
-		# Defintion of fˢ given here	
-		val = 45-abs(s/365-45);
-		val = val >= 0 ? val : 0.;
+		# Defintion of fˢ given here
+		#  Match to Ohio age distribution (yrs)
+		#  ∂YSOL! will compute correct normalization to take
+		#  density from years -> days
+		age = s/365;
+		nd = [0.,5.,15.,25.,35.,45.,55.,65.,100.];
+		ρ = [0.,.0125,.0125,.0125,.0125,.0125,.0125,.0125,0.];
+		val = myinterp(nd,ρ,age);
 		val *= prm[:fˢη];
 
 	elseif case == :χτ
@@ -193,12 +245,12 @@ Defaults to fⁱ(s,t) but optional case argument can be used to instead
 compute fⁱ(s(χ,τ),t(χ,τ))
 case:: can be either :st or :χτ
 """
-function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
+function fⁱ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
 	if case == :st
 		s = pt[1]; t = pt[2];
 		
 		# Defintion of fⁱ given here	
-		val = 5-abs(s-5);
+		val = 1+5-abs(s-5);
 		val = val >= 0 ? val : 0.;
 		val *= prm[:fⁱη];
 
@@ -213,7 +265,7 @@ function fⁱ(pt::VecVw,prm::Dict{Symbol,Float64};case::Symbol=:st)
 end
 
 #%% Auxilliary methods for sampling function parameters across batch of sample points
-function λ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
+function λ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
@@ -225,7 +277,7 @@ function λ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	return val
 end
-function β(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
+function β(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
@@ -237,7 +289,7 @@ function β(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	return val
 end
-function α(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
+function α(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
@@ -249,7 +301,7 @@ function α(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	return val
 end
-function γ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
+function γ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
@@ -261,7 +313,7 @@ function γ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	return val
 end
-function fˢ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
+function fˢ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
@@ -273,7 +325,7 @@ function fˢ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
 
 	return val
 end
-function fⁱ(pts::Matrix{Float64},prm::Dict{Symbol,Float64};case::Symbol=:st)
+function fⁱ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
 	@assert size(pts)[1] == 2 "pts must have dimension 2"
 	npts = size(pts)[2];
 
