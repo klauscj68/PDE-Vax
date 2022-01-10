@@ -12,8 +12,8 @@ function data()
 	# Domain
 	#  Largest age by yˢ,yᵛ,yⁱ
 	prm[:Ls] = 100. *365; # up to 100 years
-	prm[:Lv] = 21.; # up to 8 months
-	prm[:Li] = 21.; # up to 21 days
+	prm[:Lv] = 11.; # up to 8 months
+	prm[:Li] = 45.; # up to 21 days
 
 	#  Largest time
 	prm[:T] = 31.;	
