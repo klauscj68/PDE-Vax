@@ -1,339 +1,99 @@
-## File storing parameters and model equation terms
-# Should also have loaded auxilliary.jl
-
-#%% Model scalar parameters
-# data
+using SpecialFunctions
 """
-Dictionary storing model scalar parameters
+Output the default model parameters as a Dict{Symbol,Vector{Float64}}
 """
 function data()
-	prm = DSymFl();
-	
-	# Domain
-	#  Largest age by yˢ,yᵛ,yⁱ
-	prm[:Ls] = 100. *365; # up to 100 years
-	prm[:Lv] = 21.; # up to 8 months
-	prm[:Li] = 21.; # up to 21 days
+	prm = Dict{Symbol,Vector{Float64}}();
 
-	#  Largest time
-	prm[:T] = 31.;	
+	# domain
+	prm[:yˢrg] = [0.0,100.0*365];
+	prm[:yᵛrg] = [0.0,2*31.0];
+	prm[:yⁱrg] = [0.0,14.0];
 
-	# Epidemic
-	#  Initial fraction vaccinated
-	prm[:ρ] = .3;
+	prm[:Trg] = [0.0,0.5];
 
-	# Hazard rates
-	#  β: Weibull distribution
-	prm[:βa] = .5;
-	prm[:βb] = 10.;
-	prm[:βη] = 1.; # mutated by ∂YSOL! to ensure continuity at (0,0)
+	# α parameters
+	prm[:αL] = [14.0];
+	prm[:αeff] = [0.92];
 
-	#  γ: Weibull distributrion
-	prm[:γa] = 20.;
-	prm[:γb] = 1.5;
+	# β parameters
+	prm[:βa]=[1.0];
+	prm[:βb]=[3.0];
 
-	#  Initial populations
-	prm[:fˢη] = 1.; # mutated by ∂YSOL! to ensure prob distribution
-	prm[:fⁱη] = 1.; # mutated by ∂YSOL! to ensure prob distribution
+	# γ parameters
+	prm[:γa]=[1.0];
+	prm[:γb]=[2.0];
 
-	# Numerical discretization
-	#  Number nodes within each [t=t₀] set
-	prm[:nnd] = 1225.;
+	# λ parameters
+	prm[:λ]=[0.5];
 
-	#  downsamples used to save the solution along integration in space-time
-	prm[:δt] = .1;
-	prm[:δs] = .01; # relative length of axis
+	# mass of t₀ infected
+	prm[:ρ] = [0.3];
 
-	#   tolerances for ode integration and maximum permitted 
-	#   integration step
-	prm[:atol] = 1e-9;
-	prm[:rtol] = 1e-3;
-	prm[:rlow] = 1e-6; # least yval for rel error exactly enforced
-	prm[:δtmax] = 3.;
+	# spatial discretization
+	prm[:nnd] = [50.0];
+
+	# ode discretization
+	prm[:atol]=[1e-6];
+	prm[:rtol]=[1e-3];
+
+	# parameters for how often and the res by which sol is stored
+	prm[:dwnsmp]=[0.1];
+	prm[:nndsmp]=[5.0];
 
 	return prm
-	
-end
-# data!
-"""
-Mutate the prm dictionary so that all parameters depending on others are 
-properly set to those values
-"""
-function data!(prm::DSymFl)
-	#-----
-	# Compute normalization constants
-	nnd = Int64(prm[:nnd]);
-
-	#  Define initial geometry
-	tlvl_yˢ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Ls],nnd)) );
-	tlvl_yᵛ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Lv],nnd)) );
-	tlvl_yⁱ = Tℓvℓ( 0.,convert(Vector,LinRange(0.,prm[:Li],nnd)) );
-
-	vβ = Vector{Float64}(undef,nnd);
-	vfˢ = Vector{Float64}(undef,nnd);
-	vfⁱ = Vector{Float64}(undef,nnd);
-	
-	#  Adjust fˢ,fⁱ to be probability distributions
-	@inbounds for i=1:nnd
-		nd = @view tlvl_yˢ.nds[:,i];
-		vfˢ[i] = fˢ(nd,prm;case=:χτ);
-
-		nd = @view tlvl_yⁱ.nds[:,i];
-		vfⁱ[i] = fⁱ(nd,prm;case=:χτ);
-	end
-	
-	#   Record the scaling
-	∫fˢds = ∫line(Yℓvℓ(tlvl_yˢ,vfˢ));
-	∫fⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vfⁱ));
-
-	prm[:fˢη] *= 1/∫fˢds;
-	prm[:fⁱη] *= 1/∫fⁱds; vfⁱ *= prm[:fⁱη];
-	
-	#  Adjust the β to be compatible with cont BC's at (0,0)
-	@inbounds for i=1:nnd
-		nd = @view tlvl_yⁱ.nds[:,i];
-		vβ[i] = β(nd,prm;case=:χτ);
-	end
-
-	∫βfⁱds = ∫line(Yℓvℓ(tlvl_yⁱ,vβ.*vfⁱ));
-	prm[:βη] *= fⁱ([0.,0.],prm;case=:χτ)/∫βfⁱds;
-	prm[:βη] = (!isnan(prm[:βη])) ? (prm[:βη]) : 0.;
-
 end
 
-#%% Model function parameters
-# λ
+#%% Equation terms
 """
-Evaluate λ 
-Defaults to λ(s,t) but optional case argument can be used to instead
-compute λ(s(χ,τ),t(χ,τ))
-case:: can be either :st or :χτ
+Evaluate the α equation terms for given choice of parameters
+Note: ∂v = ∂s+∂t
 """
-function λ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
-	
-	if case == :st
-		s = pt[1]; t = pt[2];
-		
-		# Defintion of λ(s,t) given here
-		#  Note: need λ(s,0)≡0 for BC's
-		val = 2 - abs(t/31 - 2);
-		val = val >= 0 ? val : 0.;
-	
-	elseif case == :χτ
-		newpt = Fχτ(pt);
-		val = λ(newpt,prm;case=:st);
+function α(s::Float64,t::Float64;prm::DSymVFl=data())
+	val = prm[:αeff][1]*(s<prm[:αL][1] ? s : prm[:αL][1]);
+
+	return val
+end
+function ∂vα(s::Float64,t::Float64;prm::DSymVFl=data())
+	if s>prm[:αL][1]
+		return 0.0
 	else
-		error("not valid λ-eval case");
+		return prm[:αeff][1]/prm[:αL][1]
 	end
+end
+
+function β(s::Float64,t::Float64;prm::DSymVFl=data())
+	val = prm[:βb][1]/prm[:βa][1]*(s/prm[:βa][1])^(prm[:βb][1]-1);
 
 	return val
 end
+function ∂vβ(s::Float64,t::Float64;prm::DSymVFl=data())
+	return prm[:βb][1]/prm[:βa][1]*(s/prm[:βa][1])^(prm[:βb][1]-2.)*(prm[:βb][1]-1.)*1/prm[:βa][1]
 
-# β
-"""
-Evaluate β
-Defaults to β(s,t) but optional case argument can be used to instead
-compute β(s(χ,τ),t(χ,τ))
-case:: can be either :st or :χτ
-"""
-function β(pt::VecVw,prm::DSymFl;case::Symbol=:st)
-	if case == :st
-		s = pt[1]; t = pt[2];
-		
-		# Defintion of β(s,t) given here
-		ram = s/prm[:βa];
-		val = (ram >= 1e-6) ? prm[:βb]/prm[:βa]*real( (ram+0im)^(prm[:βb]-1.) ) : (
-						prm[:βb]/prm[:βa]*real( (1e-6+0im)^(prm[:βb]-1.) ) );
-		val *= prm[:βη]; # used by ∂YSOL! to enforce BC 
-		                 # continuity at (0,0)
-	
-	elseif case == :χτ
-		newpt = Fχτ(pt);
-		val = β(newpt,prm;case=:st);
-	else
-		error("not valid β-eval case");
-	end
+end
+
+function γ(s::Float64,t::Float64;prm::DSymVFl=data())
+	val = prm[:γb][1]/prm[:γa][1]*(s/prm[:γa][1])^(prm[:γb][1]-1);
 
 	return val
 end
-
-# α
-"""
-Evaluate α
-Defaults to α(s,t) but optional case argument can be used to instead
-compute α(s(χ,τ),t(χ,τ))
-case:: can be either :st or :χτ
-"""
-function α(pt::VecVw,prm::DSymFl;case::Symbol=:st)
-	if case == :st
-		s = pt[1]; t = pt[2];
-		
-		# Defintion of α(s,t) given here	
-		val = .92/14*(s<=14 ? s : 14);
-	
-	elseif case == :χτ
-		newpt = Fχτ(pt);
-		val = α(newpt,prm;case=:st);
-	else
-		error("not valid α-eval case");
-	end
-
-	return val
+function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data())
+	return prm[:γb][1]/prm[:γa][1]*(s/prm[:γa][1])^(prm[:γb][1]-2.)*(prm[:γb][1]-1.)*1/prm[:γa][1]
+end
+function λ(s::Float64,t::Float64;prm::DSymVFl=data())
+	return prm[:λ][1]
+end
+function ∂vλ(s::Float64,t::Float64;prm::DSymVFl=data())
+	return 0.0
 end
 
-# γ
-"""
-Evaluate γ
-Defaults to γ(s,t) but optional case argument can be used to instead
-compute γ(s(χ,τ),t(χ,τ))
-case:: can be either :st or :χτ
-"""
-function γ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
-	if case == :st
-		s = pt[1]; t = pt[2];
-		
-		# Defintion of γ(s,t) given here
-		ram = s/prm[:γa];
-		val = (ram >= 1e-6) ? prm[:γb]/prm[:γa]*real( (ram+0im)^(prm[:γb]-1.) ) : (
-			                 prm[:γb]/prm[:γa]*real( (1e-6+0im)^(prm[:γb]-1.) ) );
-	
-	elseif case == :χτ
-		newpt = Fχτ(pt);
-		val = γ(newpt,prm;case=:st);
-	else
-		error("not valid γ-eval case");
-	end
-
-	return val
+#%% Initial data
+function fˢ(s::Float64;prm::DSymVFl=data())
+	return 1/(100*365);
 end
-
-# fˢ
-"""
-Evaluate fˢ
-Defaults to fˢ(s,t) but optional case argument can be used to instead
-compute fˢ(s(χ,τ),t(χ,τ))
-case:: can be either :st or :χτ
-"""
-function fˢ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
-	if case == :st
-		s = pt[1]; t = pt[2];
-		
-		# Defintion of fˢ given here
-		#  Match to Ohio age distribution (yrs)
-		#  ∂YSOL! will compute correct normalization to take
-		#  density from years -> days
-		age = s/365;
-		nd = [0.,5.,15.,25.,35.,45.,55.,65.,100.];
-		ρ = [0.,.0125,.0125,.0125,.0125,.0125,.0125,.0125,0.];
-		val = myinterp(nd,ρ,age);
-		val *= prm[:fˢη];
-
-	elseif case == :χτ
-		newpt = Fχτ(pt);
-		val = fˢ(newpt,prm;case=:st);
-	else
-		error("not valid fˢ-eval case");
-	end
-
-	return val
+function fᵛ(s::Float64;prm::DSymVFl=data())
+	return 0.0
 end
-
-#fⁱ
-"""
-Evaluate fⁱ
-Defaults to fⁱ(s,t) but optional case argument can be used to instead
-compute fⁱ(s(χ,τ),t(χ,τ))
-case:: can be either :st or :χτ
-"""
-function fⁱ(pt::VecVw,prm::DSymFl;case::Symbol=:st)
-	if case == :st
-		s = pt[1]; t = pt[2];
-		
-		# Defintion of fⁱ given here	
-		val = 1+5-abs(s-5);
-		val = val >= 0 ? val : 0.;
-		val *= prm[:fⁱη];
-
-	elseif case == :χτ
-		newpt = Fχτ(pt);
-		val = fⁱ(newpt,prm;case=:st);
-	else
-		error("not valid fⁱ-eval case");
-	end
-
-	return val
-end
-
-#%% Auxilliary methods for sampling function parameters across batch of sample points
-function λ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
-	@assert size(pts)[1] == 2 "pts must have dimension 2"
-	npts = size(pts)[2];
-
-	val = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		pt = @view pts[:,i];
-		val[i] = λ(pt,prm;case=case);
-	end
-
-	return val
-end
-function β(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
-	@assert size(pts)[1] == 2 "pts must have dimension 2"
-	npts = size(pts)[2];
-
-	val = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		pt = @view pts[:,i];
-		val[i] = β(pt,prm;case=case);
-	end
-
-	return val
-end
-function α(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
-	@assert size(pts)[1] == 2 "pts must have dimension 2"
-	npts = size(pts)[2];
-
-	val = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		pt = @view pts[:,i];
-		val[i] = α(pt,prm;case=case);
-	end
-
-	return val
-end
-function γ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
-	@assert size(pts)[1] == 2 "pts must have dimension 2"
-	npts = size(pts)[2];
-
-	val = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		pt = @view pts[:,i];
-		val[i] = γ(pt,prm;case=case);
-	end
-
-	return val
-end
-function fˢ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
-	@assert size(pts)[1] == 2 "pts must have dimension 2"
-	npts = size(pts)[2];
-
-	val = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		pt = @view pts[:,i];
-		val[i] = fˢ(pt,prm;case=case);
-	end
-
-	return val
-end
-function fⁱ(pts::Matrix{Float64},prm::DSymFl;case::Symbol=:st)
-	@assert size(pts)[1] == 2 "pts must have dimension 2"
-	npts = size(pts)[2];
-
-	val = Vector{Float64}(undef,npts);
-	@inbounds for i=1:npts
-		pt = @view pts[:,i];
-		val[i] = fⁱ(pt,prm;case=case);
-	end
-
-	return val
+function fⁱ(s::Float64;prm::DSymVFl=data())
+	return prm[:ρ][1]*1/14;
 end

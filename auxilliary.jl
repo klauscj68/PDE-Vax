@@ -1,167 +1,47 @@
 ## Suite of ancillary routines for solving the vaccination PDE system
-using SpecialFunctions
-
-#%% Aliases
-VecVw = Union{
-	      Vector{Float64},
-	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Int64, Base.Slice{Base.OneTo{Int64}}}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:]
-	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:] 
-	     };
-DSymFl = Dict{Symbol,Float64};
-#%% Coordinate Transformation
-# γℓvℓ
-"""
-Map parameterizing [t=t₀] over (χ,τ)-plane 
-"""
-function γℓvℓ(t₀::Float64,χ::Float64)
-	 
-	pt = [χ;
-	     1/√(2)*χ - 1/√(2)*abs(χ) + √(2)*t₀];
-
-	return pt
-end
-
-# Fχτ
-"""
-Map from (χ,τ) coordinates to (s,t) coordinates
-"""
-function Fχτ(pt::VecVw)
-	χ = pt[1]; τ = pt[2];
-
-	st = [.5*χ+.5*abs(χ) + 1/√(2)*τ,
-	      -.5*χ+.5*abs(χ) + 1/√(2)*τ];
-
-	return st
-end
-function Fχτ(pts::Matrix{Float64})
-	@assert size(pts)[1] == 2 "pts must be two dimensional"
-	npts = size(pts)[2];
-	
-	sts = Matrix{Float64}(undef,2,npts)
-	@inbounds for j=1:npts
-		sts[:,j] = Fχτ(@view pts[:,j]);
-	end
-
-	return sts
-end
-
-# Fst
-"""
-Map from (s,t) coordinates to (χ,τ) coordinates
-"""
-function Fst(pt::VecVw)
-	s = pt[1]; t = pt[2];
-
-	χτ = [s - t,
-	      1/√(2)*s+1/√(2)*t - 1/√(2)*abs(s-t)];
-
-	return χτ
-end
-function Fst(pts::Matrix{Float64})
-	@assert size(pts)[1] == 2 "pts must be two dimensional"
-	npts = size(pts)[2];
-	
-	χτs = Matrix{Float64}(undef,2,npts)
-	@inbounds for j=1:npts
-		χτs[:,j] = Fst(@view pts[:,j]);
-	end
-
-	return χτs
-end
+# Coordinate system for numerical routines are (s,t)
 
 #%% Custom Structures
 # Tℓvℓ
 """
 Structure encoding the discretization of [t=t₀] in the (χ,τ)-plane
 The inner constructor allows for mutating an optional nds input so
-Julia can reduce the memory allocation
+Julia can reduce the memory allocation. t0 is a scalar stored as 
+vector so the structures can be mutated
 """
 struct Tℓvℓ
 	t₀::Vector{Float64}
 	nnd::Int64
-	nds::Matrix{Float64}
-	χrg::Vector{Float64}
-	τrg::Vector{Float64}
+	srg::Vector{Float64}
 	snds::Vector{Float64}
-	
-	function Tℓvℓ(t₀::Float64,χvals::Vector{Float64};
-		      nds::Matrix{Float64}=Matrix{Float64}(undef,2,length(χvals)))
-		@assert t₀ >= 0 "t₀ must be nonnegative"
-		nnd = length(χvals);
-		@assert size(nds) == (2,nnd) "nds must have length as χvals"
+	Δs::Vector{Float64}
 
-		# Generate the nodes and ranges
-		snds = Vector{Float64}(undef,nnd);
-		@inbounds for i=1:nnd 
-			pt = γℓvℓ(t₀,χvals[i]);
-			nds[:,i] = pt;
-			snds[i] = Fχτ(pt)[1];
-		end
+	function Tℓvℓ(t₀::Float64,srg::Vector{Float64},nnd::Int64)
+		nitv = nnd-1;
+		Δs = (srg[end]-srg[1])/(nitv);
+		snds = [srg[1]+k*Δs for k=0:nitv];
 
-		χmin,τmin = minimum(nds,dims=2);
-		χmax,τmax = maximum(nds,dims=2);
-
-		χrg = [χmin,χmax];
-		τrg = [τmin,τmax];
-
-		return new([t₀],nnd,nds,χrg,τrg,snds);
-	end	
-
-	function Tℓvℓ(t₀::Vector{Float64},nnd::Int64,nds::Matrix{Float64},
-		      χrg::Vector{Float64},τrg::Vector{Float64},
-		      snds::Vector{Float64})
-
-		return new(t₀,nnd,nds,χrg,τrg,snds)
+		return new([t₀],nnd,[srg[1],srg[end]],snds,[Δs])
 	end
 
+	function Tℓvℓ(t₀::Float64,nnd::Int64,srg::Vector{Float64})
+		return Tℓvℓ(t₀,srg,nnd)
+	end
+
+	function Tℓvℓ(x::UndefInitializer,nnd::Int64)
+		return new([NaN],nnd,[NaN,NaN],fill(NaN,nnd),[NaN])
+	end
+
+	function Tℓvℓ(nnd::Int64,x::UndefInitializer)
+		return Tℓvℓ(x,nnd)
+	end
 end
-
-# Tℓvℓ!
-"""
-Mutate a given Tℓvℓ structure in the fashion the ODE-Euler integration
-scheme will use along characteristics:
-Maps the s-coord values to the new [t=t0] level in (χ,τ)-plane
-"""
-function Tℓvℓ!(t₀::Float64,tlvl::Tℓvℓ)
-	# Overwrite fields of tlvl to new values
-	tlvl.t₀[1] = t₀;
-	
-	q = [0.,t₀];
-	nds = tlvl.nds;
-	snds = tlvl.snds;
-	@inbounds for i=tlvl.nnd:-1:2
-		q[1] = snds[i];
-		nds[:,i] = Fst(q);
+function Base.show(io::IO,tlvl::Tℓvℓ)
+	for fld in fieldnames(Tℓvℓ)
+		val = getfield(tlvl,fld);
+		flds = string(fld);
+		println(io,flds*": $val");
 	end
-
-	nds[:,1] = [-t₀,0.];
-
-	χmin,τmin = minimum(nds,dims=2);
-	χmax,τmax = maximum(nds,dims=2);
-
-	tlvl.χrg[:] = [χmin,χmax];
-	tlvl.τrg[:] = [τmin,τmax];
-end
-function Tℓvℓ!(t₀::Float64,tlvl0::Tℓvℓ,tlvl::Tℓvℓ)
-	# Overwrite fields of tlvl to new values
-	tlvl.t₀[1] = t₀;
-	
-	q = [0.,t₀];
-	snds0 = tlvl0.snds;
-	nds = tlvl.nds;
-	tlvl.snds[:] = snds0;
-	@inbounds for i=tlvl.nnd:-1:2
-		q[1] = snds0[i];
-		nds[:,i] = Fst(q);
-	end
-
-	nds[:,1] = [-t₀,0.];
-
-	χmin,τmin = minimum(nds,dims=2);
-	χmax,τmax = maximum(nds,dims=2);
-
-	tlvl.χrg[:] = [χmin,χmax];
-	tlvl.τrg[:] = [τmin,τmax];
 end
 
 # Yℓvℓ
@@ -175,20 +55,68 @@ struct Yℓvℓ
 	ys::Vector{Float64}
 	∫yds::Vector{Float64}
 
-	function Yℓvℓ(x::UndefInitializer)
-		tlvl = Tℓvℓ(0.,[0.]);
-		ys = [NaN];
+	function Yℓvℓ(x::UndefInitializer;nnd::Int64=2)
+		tlvl = Tℓvℓ(undef,nnd);
+		ys = fill(NaN,nnd);
 		∫yds = [NaN];
 
 		return new(tlvl,ys,∫yds)
 	end
-
 	function Yℓvℓ(tlvl::Tℓvℓ,ys::Vector{Float64})
 
 		return new(tlvl,ys,[NaN])
 	end
+	function Yℓvℓ(tlvl::Tℓvℓ,x::UndefInitializer)
+		ys = fill(NaN,tlvl.nnd);
+		return Yℓvℓ(tlvl,ys)
+	end
+end
+function Base.show(io::IO,ylvl::Yℓvℓ)
+	val = ylvl.ys;
+	println(io,"ys: $val");
+	val = ylvl.∫yds;
+	println(io,"∫yds: $val");
+	println(io,ylvl.tlvl);
 end
 
+# Solℓvℓ
+"""
+Structure for encoding the solution at the [t=t₀] level
+"""
+struct Solℓvℓ
+	t₀::Vector{Float64}
+	yˢ::Yℓvℓ
+	yᵛ::Yℓvℓ
+	yⁱ::Yℓvℓ
+	function Solℓvℓ(yˢ::Yℓvℓ,yᵛ::Yℓvℓ,yⁱ::Yℓvℓ)
+		return new(yˢ.tlvl.t₀,yˢ,yᵛ,yⁱ)
+	end
+	function Solℓvℓ(x::UndefInitializer;nnd::Int64=2)
+		yˢ=Yℓvℓ(undef;nnd=nnd);
+		yᵛ=Yℓvℓ(undef;nnd=nnd);
+		yⁱ=Yℓvℓ(undef;nnd=nnd);
+
+		return Solℓvℓ(yˢ,yᵛ,yⁱ)
+	end
+end
+function Base.show(io::IO,sol::Solℓvℓ)
+	val = sol.t₀;
+	println(io,"t₀: $val");println("");
+	println(io,"yˢ:");println(sol.yˢ);
+	println(io,"yᵛ:");println(sol.yᵛ);
+	println(io,"yⁱ:");println(sol.yⁱ);
+end
+
+#%% Aliases
+VecVw = Union{
+	      Vector{Float64},
+	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Int64, Base.Slice{Base.OneTo{Int64}}}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:]
+	      SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, # Slice of Yℓvℓ.Tℓvℓ.nds[i,:]
+	      SubArray{Float64, 1, Vector{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}}, true}, # Slice of Yℓvℓ.Tℓvℓ.snds[:]
+	     };
+DSymFl = Dict{Symbol,Float64};
+DSymVFl = Dict{Symbol,Vector{Float64}};
+DSymYℓvℓ = Dict{Symbol,Yℓvℓ};
 
 #%% Interpolation routines
 # myfindfirst
@@ -250,220 +178,196 @@ function myinterp(tpts::VecVw,ypts::VecVw,teval::Float64)
 	return val
 
 end
+function myinterp(t::Float64,y1::Yℓvℓ,y2::Yℓvℓ)
+	@assert (t>=y1.tlvl.t₀[1])&&(t<=y2.tlvl.t₀[1]) "time levels not sequential in myinterp"
+	s = (t-y1.tlvl.t₀[1])/(y2.tlvl.t₀[1]-y1.tlvl.t₀[1]);
+	ynew = deepcopy(y1);
+	ynew.ys[:] = (1-s)*y1.ys + s*y2.ys;
+	ynew.tlvl.t₀[1]=t;
 
+	return ynew
+end
+function myinterp(t,y1::Solℓvℓ,y2::Solℓvℓ)
+	@assert (t>=y1.t₀[1])&&(t<=y2.t₀[1]) "time levels not sequential in myinterp"
+
+	s = (t-y1.t₀[1])/(y2.t₀[1]-y1.t₀[1]);
+	ynew = deepcopy(y1);
+
+	ynew.t₀[1] = t;
+	ynew.yˢ.tlvl.t₀[1] = t;
+	ynew.yᵛ.tlvl.t₀[1] = t;
+	ynew.yⁱ.tlvl.t₀[1] = t;
+
+	ynew.yˢ.ys[:] = (1-s)*y1.yˢ.ys + s*y2.yˢ.ys;
+	ynew.yᵛ.ys[:] = (1-s)*y1.yᵛ.ys + s*y2.yᵛ.ys;
+	ynew.yⁱ.ys[:] = (1-s)*y1.yⁱ.ys + s*y2.yⁱ.ys;
+
+	return ynew
+end
+
+# hyper∂
 """
-A 1d linear interpolation scheme to be used on Yℓvℓ structures. Each
-consecutive ypts value is a [t=tpts[i]] level and the interpolation is
-essentially done by Δt in the (s,t) plane
-NOTE: Assumes the ypts all have same snds values, ie are the same spatial
-      discretization
+Given the step size along t-axis for which advancing the Euler sol
+the tlvl underneath and the query point, find the point on this
+defined hyperbolic boundary from which point originated and the 
+distance between them
 """
-function myinterp(tpts::VecVw,ypts::Vector{Yℓvℓ},teval::Float64)
-	if teval <= tpts[1]
-		val = deepcopy(ypts[1]);
-	elseif teval >= tpts[end]
-		val = deepcopy(ypts[end]);
-	else
-		pos = myfindfirst(tpts,teval);
-		t1,t2 = tpts[pos-1:pos];
-		s = (teval-t1)/(t2-t1);
+function hyper∂(Δt::Float64,tlvl::Tℓvℓ,qpt::VecVw)
+	δt = qpt[1]>Δt ? Δt : qpt[1];
+	χpt = qpt .- δt;
 
-		# Construct the Tℓvℓ
-		nnd = ypts[1].tlvl.nnd;
-		nds = Matrix{Float64}(undef,2,nnd);
-		for i=1:nnd
-			nds[:,i] = Fst([ypts[1].tlvl.snds[i],teval]);
-		end
+	δs = 1.4142135623730951*δt;
 
-		χmin,τmin = minimum(nds,dims=2);
-		χmax,τmax = maximum(nds,dims=2);
+	return χpt,δs
+end
+function hyper∂(tlvl::Tℓvℓ,Δt::Float64,qpt::VecVw)
+	return hyper∂(Δt,tlvl,qpt)
+end
+function hyper∂!(Δt::Float64,tlvl::Tℓvℓ,
+		 qpt::VecVw;temp::VecVw=[NaN,NaN])
+	δt = qpt[1]>Δt ? Δt : qpt[1];
+	temp[:] = qpt .- δt;
 
-		χrg = [χmin,χmax];
-		τrg = [τmin,τmax];
+	δs = 1.4142135623730951*δt;
 
-		tlvl = Tℓvℓ([teval],nnd,nds,χrg,τrg,ypts[1].tlvl.snds);
+	return δs
+end
+function hyper∂!(tlvl::Tℓvℓ,Δt::Float64,
+		 qpt::VecVw;temp::VecVw=[NaN,NaN])
+	return hyper∂!(Δt,tlvl,qpt;temp=temp)
+end
+function hyper∂(Δt::Float64,tlvl::Tℓvℓ,s::Float64,t::Float64)
+	δt = s>Δt ? Δt : s;
+	χpt = [s,t] .- δt;
 
-		# Construct the ys
-		ys = (1-s)*ypts[pos-1].ys + s*ypts[pos].ys;
+	δs = 1.4142135623730951*δt;
 
-		val = Yℓvℓ(tlvl,ys);
+	return χpt,δs
+end
+function hyper∂(tlvl::Tℓvℓ,Δt::Float64,s::Float64,t::Float64)
+	return hyper∂(Δt,tlvl,s,t)
+end
+function hyper∂!(Δt::Float64,tlvl::Tℓvℓ,
+		 s::Float64,t::Float64;temp::VecVw=[NaN,NaN])
+	δt = s>Δt ? Δt : s;
+	temp[1] = s - δt;
+	temp[2] = t - δt;
+
+	δs =  1.4142135623730951*δt;
+
+	return δs
+end
+function hyper∂!(tlvl::Tℓvℓ,Δt::Float64,
+		 s::Float64,t::Float64;temp::VecVw=[NaN,NaN])
+	return hyper∂!(Δt,tlvl,s,t;temp=temp)
+end
+function hyper∂!(s::Float64,t::Float64,tlvl::Tℓvℓ,Δt::Float64;
+		 temp::VecVw=[NaN,NaN]);
+	return hyper∂!(Δt,tlvl,s,t;temp=temp)
+end
+function hyper∂!(s::Float64,t::Float64,Δt::Float64,tlvl::Tℓvℓ;
+		 temp::VecVw=[NaN,NaN]);
+	return hyper∂!(Δt,tlvl,s,t;temp=temp)
+end
+
+# Solution interpolation
+"""
+Evaluate the interpolated solution at query points. In first
+form, routine interpolates the value at an exact t-lvl using 
+just the s-coordinate of the point. In the second form, the 
+routine interpolates the solution between levels by interpolating
+in between a vector of ylvl's by characteristics (actually that form
+needs the vector field so save for later)
+"""
+function eval(ylvl::Yℓvℓ,s::Float64)
+	snds = @view ylvl.tlvl.snds[:];
+	yval = @view ylvl.ys[:];
+
+	return myinterp(snds,ylvl.ys,s)
+end
+
+# Solution integrations
+"""
+Integrate the solution at a level by trapezoidal rule
+"""
+function ∫line(ylvl::Yℓvℓ)
+	val = 0.0;
+	@inbounds for i=1:(ylvl.tlvl.nnd-1)
+		val += 0.5*ylvl.tlvl.Δs[1]*(ylvl.ys[i+1]+ylvl.ys[i]);
 	end
 
 	return val
 end
-
-# Solution interpolation
-function eval(ylvl::Yℓvℓ,χ::Float64)
-	χs = @view ylvl.tlvl.nds[1,:];
-
-	return myinterp(χs,ylvl.ys,χ)
-end
-
-# Solution integrations
-function ∫line(ylvl::Yℓvℓ)
-	nds = ylvl.tlvl.nds;
-	χs = @view ylvl.tlvl.nds[1,:];
-	ys = ylvl.ys;
-	nnd = size(nds)[2];
-
-	∫val = 0.;
-
-	@inbounds for i=1:nnd-1
-		ndm1 = @view nds[:,i];
-		ndp1 = @view nds[:,i+1];
-		# Split up integral into [χ<0] and [χ>0] so that in ODE
-		# integration δt→0 can make error small ind of space 
-		# discretization
-		if (χs[i]<0)&&(χs[i+1]>0)
-			nd0 = γℓvℓ(ylvl.tlvl.t₀[1],0.);
-			f0 = eval(ylvl,0.);
-
-			# Integral in [χ<0]
-			Δs = nd0 - ndm1;
-			ds = √(Δs[1]^2+Δs[2]^2);
-			
-			∫val += .5/√(3)*(ys[i]+f0)*ds;
-
-			# Intergal in [χ>=0]
-			Δs = ndp1 - nd0;
-			ds = √(Δs[1]^2+Δs[2]^2);
-
-			∫val += .5*(f0+ys[i+1])*ds;
-		else
-			# Interval has same sign
-			f1 = ys[i]*(χs[i] >= 0 ? 1 : 1/√(3));
-			f2 = ys[i+1]*(χs[i] >= 0 ? 1 : 1/√(3));
-
-			Δs = ndp1 - ndm1;
-			ds = √(Δs[1]^2+Δs[2]^2);
-			∫val += .5*(f1+f2)*ds;
-		end
-	end
-	
-	return ∫val
-end
 function ∫line!(ylvl::Yℓvℓ)
-	∫yds = ∫line(ylvl);
-	ylvl.∫yds[1] = ∫yds;
+	ylvl.∫yds[1] = ∫line(ylvl);
 end
 
-#%% Miscellaneous
-# mymax!
 """
-Elementwise maximum between a scalar and a vector which mutates the 
-optional input w
+Project a solution onto an alternative space discretization
 """
-function mymax!(x::Float64,v::VecVw;
-	        w::VecVw=fill(NaN,length(v)))
-	flagrt = isnan(w[1]) ? true : false;
-	for i=1:length(w)
-		w[i] = x >= v[i] ? x : v[i];
-	end
+function srefine(ylvl::Yℓvℓ,nnd::Int64)
+	tlvl = Tℓvℓ(ylvl.tlvl.t₀[1],ylvl.tlvl.srg,nnd);
+	yvals = [eval(ylvl,s) for s in tlvl.snds];
 
-	if flagrt
-		return w
-	end
+	return Yℓvℓ(tlvl,yvals);
+end
+function srefine!(ylvl::Yℓvℓ,nnd::Int64;
+		  temp::Yℓvℓ=Yℓvℓ(undef;nnd=nnd))
+
+	temp.tlvl.t₀[1] = ylvl.tlvl.t₀[1];
+	temp.tlvl.srg[:] = ylvl.tlvl.srg;
+	Δs = (srg[2]-srg[1])/(nnd-1); temp.tlvl.snds[:] = [srg[1]+Δs*k for k=0:nnd-1];
+	temp.ylvl.ys[:] = [eval(ylvl,s) for s in temp.tlvl.snds];
+	temp.tlvl.Δs[1] = Δs;
+
+end
+function srefine(nnd::Int64,ylvl::Yℓvℓ)
+	return srefine(ylvl,nnd)
+end
+function srefine!(nnd::Int64,ylvl::Yℓvℓ;
+		  temp::Yℓvℓ=Yℓvℓ(undef;nnd=nnd))
+	srefine!(ylvl,nnd;temp=temp)
+end
+function srefine(nnd::Int64,sol::Solℓvℓ)
+	yˢ = srefine(nnd,sol.yˢ);
+	yᵛ = srefine(nnd,sol.yᵛ);
+	yⁱ = srefine(nnd,sol.yⁱ);
+
+	return Solℓvℓ(yˢ,yᵛ,yⁱ)
+end
+function srefine(sol::Solℓvℓ,nnd::Int64)
+	return srefine(nnd,sol)
 end
 
-# srefine
+#%% Arithmetic operators on Yℓvℓ's
 """
-Project a Yℓvℓ onto alternative space discretization
+Can multiply ylvl's together by multiplying the nodal values. Assumes that
+the tlvl's are the same.
 """
-function srefine(case::Symbol,prm::Dict{Symbol,Float64},
-		 ylvl::Yℓvℓ)
-	# Initialize
-	saxis = convert(Vector{Float64},0.: prm[:δs] : 1.);
-	saxis[end] = 1.;
-	nnd = length(saxis);
-	t₀ = ylvl.tlvl.t₀[1];		
-	
-	if case==:yˢ
-		saxis*=prm[:Ls];
-	elseif case==:yᵛ
-		saxis*=prm[:Lv];
-	elseif case==:yⁱ
-		saxis*=prm[:Li];
-	else
-		error("Not a valid refinement case");
-	end
-
-
-	# Project onto coarser space mesh
-	#  Compute tlvl's new nodes
-	χτs = Fst([reshape(saxis,1,nnd);
-		   repeat([t₀],1,nnd)]);
-	χs = χτs[1,:];
-	tlvl = Tℓvℓ(t₀,χs);
-
-	#  Compute yval's at new nodes
-	yval = Vector{Float64}(undef,nnd);
-	@inbounds for i=1:nnd
-		yval[i] = eval(ylvl,χs[i]);
-	end
-
-	return Yℓvℓ(tlvl,yval)
+function Base.:*(y1::Yℓvℓ,y2::Yℓvℓ)
+	return Yℓvℓ(y1.tlvl,y1.ys.*y2.ys)
 end
-function srefine(case::Symbol,ylvl::Yℓvℓ,
-		 prm::Dict{Symbol,Float64})
-	return srefine(case,prm,ylvl)
+function ∏!(y1::Yℓvℓ,y2::Yℓvℓ,y3::Yℓvℓ)
+	y3.ys[:] = y1.ys.*y2.ys;
 end
 
-# SOLrefine!
+
+#%% Error analysis
 """
-Project the SOL vector output by PDE solver onto a coarser space mesh for
-saving. Mutates SOL.
+vlow and vhigh are resp meant to be the low and high resolution euler step
+solutions. It uses vhigh to compute the relative error
 """
-function SOLrefine!(prm::Dict{Symbol,Float64},
-		    SOL::Vector{Dict{Symbol,Yℓvℓ}})
-	Dkeys = [:yˢ,:yᵛ,:yⁱ,:λ,:α,:γ,:βyⁱ,:λyˢ,:Imαyᵛ];
-	ntdwn = length(SOL);
-	
-	gen=[1,0];
-	@inbounds for k=1:ntdwn*9
-		# i is dwnsmp and j is Dkeys
-		if gen[2]!=9
-			gen[2]+=1;
-		else
-			gen[1]+=1;
-			gen[2]=1;
-		end
-		i=gen[1]; j=gen[2];
-		key = Dkeys[j];
-		if (key in [:yˢ,:λ,:λyˢ])
-			SOL[i][key] = srefine(:yˢ,prm,SOL[i][key]);
-		elseif (key in [:yᵛ,:α,:Imαyᵛ])
-			SOL[i][key] = srefine(:yᵛ,prm,SOL[i][key]);
-		else
-			SOL[i][key] = srefine(:yⁱ,prm,SOL[i][key]);
-		end
-	end
+function myerrs!(vlow::VecVw,vhigh::VecVw;
+		rerr::VecVw=Vector{Float64}(undef,length(vlow)),
+		aerr::VecVw=Vector{Float64}(undef,length(vlow)))
+	aerr[:] = abs.(vhigh-vlow);
+	rerr[:] = aerr./abs.(vhigh);
 end
-function SOLrefine(prm::Dict{Symbol,Float64},
-		   SOL::Vector{Dict{Symbol,Yℓvℓ}})
-	SOLnew = deepcopy(SOL);
-	SOLrefine!(prm,SOLnew);
+function myerrs(vlw::VecVw,vhigh::VecVw)
+	rerr=Vector{Float64}(undef,length(vlow));
+	aerr=Vector{Float64}(undef,length(vlow));
 
-	return SOLnew
-end
+	myerrs!(vlow,vhigh;rerr=rerr,aerr=aerr);
 
-# mβ
-"""
-Compute the mean of β using model parameters in case that β is a Weibull 
-distribution
-"""
-function mβ(prm::DSymFl)
-	b = prm[:βb];
-	a = prm[:βa]/real((prm[:βη]+0im)^(1/prm[:βb]));
-
-	return a*gamma(1+1/b)
-end
-
-# mγ
-"""
-Compute the mean of γ using model parameters in case that γ is a Weibull
-distribution
-"""
-function mγ(prm::DSymFl)
-
-	return prm[:γa]*gamma(1+1/prm[:γb])
+	return aerr,rerr
 end
