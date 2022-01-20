@@ -46,7 +46,7 @@ function nonlocals!(Y::Solℓvℓ;
 	∏!(temp[:tempyᵛ],Y.yᵛ,temp[:∫∂vαyᵛ]);
 	∫line!(temp[:∫∂vαyᵛ]);
 
-	#∫(1-α)αyᵛ,∫(1-α)yᵛ,∫(1-α)²yᵛ w/key ∫Imααyᵛ,∫Imαyᵛ,∫Imα²yᵛ
+	#∫(1-α)αyᵛ,∫(1-α)yᵛ,∫(1-α)²yᵛ w/key ∫Imααyᵛ,∫Imαyᵛ,∫Imα²yᵛ,∫αyᵛ
 	@inbounds for i=1:nnd
 		temp[:tempyᵛ].ys[i]=α(snds[i],t₀;prm=prm);
 		temp[:∫Imααyᵛ].ys[i]=temp[:tempyᵛ].ys[i] |> (x->(1-x)*x);
@@ -56,15 +56,9 @@ function nonlocals!(Y::Solℓvℓ;
 	∏!(temp[:∫Imααyᵛ],Y.yᵛ,temp[:∫Imααyᵛ]); ∫line!(temp[:∫Imααyᵛ]);
 	∏!(temp[:∫Imαyᵛ],Y.yᵛ,temp[:∫Imαyᵛ]); ∫line!(temp[:∫Imαyᵛ]);
 	∏!(temp[:∫Imα²yᵛ],Y.yᵛ,temp[:∫Imα²yᵛ]); ∫line!(temp[:∫Imα²yᵛ]);
+	∏!(temp[:tempyᵛ],Y.yᵛ,temp[:∫αyᵛ]); ∫line!(temp[:∫αyᵛ]);
 
 	snds = @view Y.yⁱ.tlvl.snds[:];
-
-	# ∫βyⁱ
-	@inbounds for i=1:nnd
-		temp[:tempyⁱ].ys[i] = β(snds[i],t₀;prm=prm);
-	end
-	∏!(temp[:tempyⁱ],Y.yⁱ,temp[:∫βyⁱ]);
-	∫line!(temp[:∫βyⁱ]);
 
 	#∫(∂s+∂t)βyⁱ w/key ∫∂vβyⁱ
 	@inbounds for i=1:nnd
@@ -73,12 +67,29 @@ function nonlocals!(Y::Solℓvℓ;
 	∏!(temp[:tempyⁱ],Y.yⁱ,temp[:∫∂vβyⁱ]);
 	∫line!(temp[:∫∂vβyⁱ]);
 
-	#∫βγyⁱ
+	# ∫β (intermediate)
 	@inbounds for i=1:nnd
-		temp[:tempyⁱ].ys[i]=β(snds[i],t₀;prm=prm)*γ(snds[i],t₀;prm=prm);
+		temp[:∫βyⁱ].ys[i] = β(snds[i],t₀;prm=prm);
 	end
+
+	# ∫γ (intermediate)
+	@inbounds for i=1:nnd
+		temp[:∫γyⁱ].ys[i]=γ(snds[i],t₀;prm=prm);
+	end
+
+	# ∫βγyⁱ
+	∏!(temp[:∫βyⁱ],temp[:∫γyⁱ],temp[:tempyⁱ]);
 	∏!(temp[:tempyⁱ],Y.yⁱ,temp[:∫βγyⁱ]);
 	∫line!(temp[:∫βγyⁱ]);
+
+	# ∫βyⁱ
+	∏!(temp[:∫βyⁱ],Y.yⁱ,temp[:∫βyⁱ]);
+	∫line!(temp[:∫βyⁱ]);
+
+	# ∫γyⁱ
+	∏!(temp[:∫γyⁱ],Y.yⁱ,temp[:∫γyⁱ]);
+	∫line!(temp[:∫γyⁱ]);
+
 end
 function nonlocalsinit!(Y::Solℓvℓ;prm::DSymVFl=data());
 	val = nonlocalsinit(;prm=prm);
@@ -101,14 +112,14 @@ function nonlocalsinit(;prm::DSymVFl=data())
 	end
 
 	# yᵛ integrals
-	nlkeys=[:∫∂vαyᵛ,:∫Imααyᵛ,:∫Imαyᵛ,:∫Imα²yᵛ,:tempyᵛ];
+	nlkeys=[:∫∂vαyᵛ,:∫Imααyᵛ,:∫Imαyᵛ,:∫Imα²yᵛ,:∫αyᵛ,:tempyᵛ];
 	tlvl = Tℓvℓ(0.0,nnd,prm[:yᵛrg]);
 	for key in nlkeys
 		temp[key]=Yℓvℓ(tlvl,undef);
 	end
 
 	# yⁱ integrals
-	nlkeys=[:∫βyⁱ,:∫∂vβyⁱ,:∫βγyⁱ,:tempyⁱ];
+	nlkeys=[:∫βyⁱ,:∫∂vβyⁱ,:∫βγyⁱ,:∫γyⁱ,:tempyⁱ];
 	tlvl = Tℓvℓ(0.0,nnd,prm[:yⁱrg]);
 	for key in nlkeys
 		temp[key]=Yℓvℓ(tlvl,undef);
@@ -175,13 +186,31 @@ function ∂flow(t::Float64,Y::Solℓvℓ;
 end
 
 """
+Compute the yʳ flow 
+"""
+function yʳflow!(t::Float64;
+		 prm::DSymVFl=data(),
+		 nls::DSymYℓvℓ=nonlocals(Y;prm=prm),
+		 temp::VecVw=[0.0])
+	temp[:] = nls[:∫αyᵛ].∫yds + nls[:∫γyⁱ].∫yds;
+end
+function yʳflow(t::Float64;
+		prm::DSymVFl=data(),
+		nls::DSymYℓvℓ=nonlocals(Y;prm=prm))
+	temp = [0.0]
+	yʳflow(t;prm=prm,nls=nls,temp=temp);
+
+	return temp
+end
+"""
 Take an euler step of specified size originating from the given tlvl
 """
-function euler!(Δt::Float64,Y::Solℓvℓ;
+function euler!(Δt::Float64,Y::Solℓvℓ,yʳ::VecVw;
 		temp::Solℓvℓ=deepcopy(Y),
 		vtemp::VecVw=Vector{Float64}(undef,3),
 		∂vtemp::VecVw=Vector{Float64}(undef,3),
 		∂temp::VecVw=Vector{Float64}(undef,2),
+		yʳtemp::VecVw=Vector{Float64}(undef,1),
 		prm::DSymVFl=data(),
 		nls::DSymYℓvℓ=nonlocals(Y;prm=prm))
 	# Advance the time value
@@ -229,6 +258,10 @@ function euler!(Δt::Float64,Y::Solℓvℓ;
 		end
 
 	end
+
+	#  yʳ flow
+	yʳflow!(Y.t₀[1];prm=prm,nls=nls,temp=yʳtemp);
+	yʳtemp[:] = yʳ+Δt*yʳtemp;
 end
 
 """
@@ -245,6 +278,7 @@ function pdesolve(;prm::DSymVFl=data())
 
 	# Initialize the solution at starting time
 	ysol = Vector{Solℓvℓ}(undef,nsmp);
+	yʳsol = Vector{Float64}(undef,nsmp);
 	nnd = prm[:nnd][1] |> ceil |> Int64;
 	nndsmp = prm[:nndsmp][1] |> ceil |> Int64;
 	yˢ = Tℓvℓ(prm[:Trg][1],nnd,prm[:yˢrg]) |> (x->Yℓvℓ(x,undef));
@@ -260,12 +294,18 @@ function pdesolve(;prm::DSymVFl=data())
 	sol0  = Solℓvℓ(yˢ,yᵛ,yⁱ); # current level
 	sol   = deepcopy(sol0); # single adaptive Euler step
 	sol1x = deepcopy(sol0); # first double adaptive euler step
-	sol2x = deepcopy(sol0); # double adaptive Euler step	
+	sol2x = deepcopy(sol0); # double adaptive Euler step
+
+	yʳ0 = [0.0];
+	yʳ = [0.0];
+	yʳ1x = [0.0];
+	yʳ2x = [0.0];
 
 	# Initialize memory allocations for flow computations
 	∂temp = Vector{Float64}(undef,2);
 	vtemp = Vector{Float64}(undef,3);
 	∂vtemp = Vector{Float64}(undef,3);
+	yʳtemp = Vector{Float64}(undef,1);
 	nls = nonlocalsinit!(sol0;prm=prm);
 	nls1x = deepcopy(nls);
 	
@@ -273,8 +313,12 @@ function pdesolve(;prm::DSymVFl=data())
 	aerr = Vector{Float64}(undef,nnd);
 	rerr = Vector{Float64}(undef,nnd);
 
+	yʳaerr = [0.0];
+	yʳrerr = [0.0];
+
 	# Store solution in ysol vector
 	ysol[1] = sol0 |> (x->srefine(nndsmp,x));
+	yʳ[1] = 0.0;
 
 	# Integrate the system by an adaptive Euler step
 	prg = 0.0; Δt = prm[:dwnsmp][1]; pos=2
@@ -282,18 +326,18 @@ function pdesolve(;prm::DSymVFl=data())
 		flagfd = false;
 		while !flagfd
 			# single euler step
-			euler!(Δt,sol0;
-			       temp=sol,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,
+			euler!(Δt,sol0,yʳ0;
+			       temp=sol,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,yʳtemp=yʳ,
 			       prm=prm,nls=nls);
 
 			# double euler step
-			euler!(0.5*Δt,sol0;
-			       temp=sol1x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,
+			euler!(0.5*Δt,sol0,yʳ0;
+			       temp=sol1x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,yʳtemp=yʳ1x,
 			       prm=prm,nls=nls);
 			
 			nonlocals!(sol1x;temp=nls1x,prm=prm);
-			euler!(0.5*Δt,sol1x;
-			       temp=sol2x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,
+			euler!(0.5*Δt,sol1x,yʳ1x;
+			       temp=sol2x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,yʳtemp=yʳ2x,
 			       prm=prm,nls=nls1x);
 
 			# compute errors and adapt step if accuracy not sufficient
@@ -318,6 +362,12 @@ function pdesolve(;prm::DSymVFl=data())
 				continue
 			end
 
+			myerrs!(yʳ,yʳ2x;aerr=yʳaerr,rerr=yʳrerr);
+			if (maximum(yʳaerr)>prm[:atol][1])&&(maximum(yʳrerr)>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
 			flagfd = true;
 		end
 
@@ -326,82 +376,15 @@ function pdesolve(;prm::DSymVFl=data())
 		val = sol2x.t₀[1]-prm[:Trg][1];
 		while (val >= prg+δprg)&&(pos<=nsmp)
 			ysol[pos] = myinterp(taxis[pos],sol0,sol2x) |> (x->srefine(nndsmp,x));
+			yʳsol[pos] = myinterp([sol0.t₀[1],sol2x.t₀[1]],[yʳ[1],yʳ2x[1]],taxis[pos]);
 			pos += 1;
 			prg += δprg;
 			printprg = prg/(prm[:Trg][2]-prm[:Trg][1]);
 			println("Simulation progress: $printprg/1"); 
 		end
-		sol0 = deepcopy(sol2x); nonlocals!(sol0;temp=nls,prm=prm);
+		sol0 = deepcopy(sol2x); nonlocals!(sol0;temp=nls,prm=prm); yʳ0[:] = deepcopy(yʳ2x);
 		Δt *= 2;
 	end
 
-	return ysol
-end
-
-"""
-Compute the aggregate recovered population from the output of pdesolve
-"""
-function yʳsolve!(S::Vector{Solℓvℓ};
-		  prm::DSymVFl=data(),
-	          temp::VecVw=Vector{Float64}(undef,length(S)),
-		  tempyᵛ::Yℓvℓ=deepcopy(S[1].yᵛ),
-		  tempyⁱ::Yℓvℓ=deepcopy(S[1].yⁱ))
-	n = length(S);
-	taxis = [S[i].t₀[1] for i=1:n];
-
-	# Compute derivative vector of yʳ in temp
-	@inbounds for i=1:n
-		# ∫αyᵛ
-		tempyᵛ.ys[:] = α.(S[i].yᵛ.tlvl.snds,taxis[i];prm=prm);
-		∏!(tempyᵛ,S[i].yᵛ,tempyᵛ);
-		∫line!(tempyᵛ);
-		temp[i] = tempyᵛ.∫yds[1];
-
-		# ∫γyⁱ
-		tempyⁱ.ys[:] = γ.(S[i].yⁱ.tlvl.snds,taxis[i];prm=prm);
-		∏!(tempyⁱ,S[i].yⁱ,tempyⁱ);
-		∫line!(tempyⁱ);
-		temp[i] += tempyⁱ.∫yds[1];
-	end
-
-	# integrate in time by trapezoidal
-	fwd = @view temp[2:end];
-	prs = @view temp[1:end-1];
-	temp[2:end] = 0.5*(fwd+prs)*(taxis[2]-taxis[1]);
-	temp[1]=0.0;
-	cumsum!(temp,temp);
-end
-function yʳsolve(S::Vector{Solℓvℓ};
-		 prm::DSymVFl=data())
-	temp = Vector{Float64}(undef,length(S));
-	tempyᵛ = deepcopy(S[1].yᵛ);
-	tempyⁱ = deepcopy(S[1].yⁱ)
-
-	yʳsolve!(S;prm=prm,temp=temp,tempyᵛ=tempyᵛ,tempyⁱ=tempyⁱ);
-
-	return temp
-end
-""" 
-Plot the masses of compartments as they evolve in time
-"""
-function plotm(S::Vector{Solℓvℓ};prm::DSymVFl=data())
-	n = length(S);
-	@inbounds for i=1:n
-		∫line!(S[i].yˢ); ∫line!(S[i].yᵛ); ∫line!(S[i].yⁱ)
-	end
-
-	taxis = [S[i].t₀[1] for i=1:n];
-	yˢ = [S[i].yˢ.∫yds[1] for i=1:n];
-	yᵛ = [S[i].yᵛ.∫yds[1] for i=1:n];
-	yⁱ = [S[i].yⁱ.∫yds[1] for i=1:n];
-
-	yʳ = yʳsolve(S;prm=prm);
-
-	Σ = yˢ+yᵛ+yⁱ+yʳ;
-
-	p1 = plot(taxis,[yˢ,yᵛ,yⁱ,yʳ,Σ],labels=["∫yˢds" "∫yᵛds" "∫yⁱds" "∫yʳds" "Σ"],
-		  linewidth=3);	
-	hline!([1.0+prm[:ρ][1]],linewidth=3,linestyle=:dash,labels="theory Σ")
-	plot!(xlabel="time elapsed (days)",ylabel="mass");
-	plot!(xtickfontsize=10,ytickfontsize=10,xguidefontsize=12,yguidefontsize=12,size=(400,400));
+	return ysol,yʳsol
 end

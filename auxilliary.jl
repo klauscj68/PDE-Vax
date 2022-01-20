@@ -408,3 +408,26 @@ function RecipesBase.plot(V::Vector{Solℓvℓ})
 	lay = @layout [a b c];
 	p = plot(p1,p2,p3,layout=lay,margin=5mm,size=(1200,400))
 end
+""" 
+Plot the masses of compartments as they evolve in time
+"""
+function RecipesBase.plot(S::Vector{Solℓvℓ},yʳ::VecVw;
+		          prm::DSymVFl=data())
+	n = length(S);
+	@inbounds for i=1:n
+		∫line!(S[i].yˢ); ∫line!(S[i].yᵛ); ∫line!(S[i].yⁱ)
+	end
+
+	taxis = [S[i].t₀[1] for i=1:n];
+	yˢ = [S[i].yˢ.∫yds[1] for i=1:n];
+	yᵛ = [S[i].yᵛ.∫yds[1] for i=1:n];
+	yⁱ = [S[i].yⁱ.∫yds[1] for i=1:n];
+
+	Σ = yˢ+yᵛ+yⁱ+yʳ;
+
+	p1 = plot(taxis,[yˢ,yᵛ,yⁱ,yʳ,Σ],labels=["∫yˢds" "∫yᵛds" "∫yⁱds" "∫yʳds" "Σ"],
+		  linewidth=3);	
+	hline!([1.0+prm[:ρ][1]],linewidth=3,linestyle=:dash,labels="theory Σ")
+	plot!(xlabel="time elapsed (days)",ylabel="mass");
+	plot!(xtickfontsize=10,ytickfontsize=10,xguidefontsize=12,yguidefontsize=12,size=(400,400));
+end

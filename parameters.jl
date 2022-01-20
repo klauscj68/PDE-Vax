@@ -33,11 +33,11 @@ function data()
 	prm[:ρ] = [0.0051];
 
 	# spatial discretization
-	prm[:nnd] = [100.0];
+	prm[:nnd] = [500.0];
 
 	# ode discretization
 	prm[:atol]=[1e-6];
-	prm[:rtol]=[1e-3];
+	prm[:rtol]=[1e-4];
 
 	# parameters for how often and the res by which sol is stored
 	prm[:dwnsmp]=[0.1];
