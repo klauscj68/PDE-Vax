@@ -136,7 +136,6 @@ function flow!(s::Float64,t::Float64,
 	αval = α(s,t;prm=prm);
 	temp[2] = -0.7071067811865475*(αval+(1-αval)*nls[:∫βyⁱ].∫yds[1])*eval(Y.yᵛ,s);
 	temp[3] = -0.7071067811865475*γ(s,t;prm=prm)*eval(Y.yⁱ,s);
-	@bp
 
 end
 function flow(s::Float64,t::Float64,
@@ -165,7 +164,6 @@ function ∂flow!(t::Float64,Y::Solℓvℓ;
 			       )*(
 				  nls[:∫∂vβyⁱ].∫yds[1]+β(0.0,t;prm=prm)*Y.yⁱ.ys[1]-nls[:∫βγyⁱ].∫yds[1]
 				 );
-	@bp
 end
 function ∂flow(t::Float64,Y::Solℓvℓ;
                prm::DSymVFl=data(),
@@ -237,6 +235,9 @@ end
 Solve the pde system with implicit, nonlocal ∂-terms
 """
 function pdesolve(;prm::DSymVFl=data())
+	# Adjust prm to satisfy initial conditions
+	data!(prm);
+
 	nsmp = (prm[:Trg][2]-prm[:Trg][1])/prm[:dwnsmp][1] |> ceil |> Int64;
 	taxis = convert(Vector{Float64},
 			LinRange(prm[:Trg][1],prm[:Trg][2],nsmp));
@@ -266,6 +267,7 @@ function pdesolve(;prm::DSymVFl=data())
 	vtemp = Vector{Float64}(undef,3);
 	∂vtemp = Vector{Float64}(undef,3);
 	nls = nonlocalsinit!(sol0;prm=prm);
+	nls1x = deepcopy(nls);
 	
 	# Initalize memory allocations for error analysis
 	aerr = Vector{Float64}(undef,nnd);
@@ -288,10 +290,11 @@ function pdesolve(;prm::DSymVFl=data())
 			euler!(0.5*Δt,sol0;
 			       temp=sol1x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,
 			       prm=prm,nls=nls);
-
+			
+			nonlocals!(sol1x;temp=nls1x,prm=prm);
 			euler!(0.5*Δt,sol1x;
 			       temp=sol2x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,
-			       prm=prm,nls=nls);
+			       prm=prm,nls=nls1x);
 
 			# compute errors and adapt step if accuracy not sufficient
 			myerrs!(sol.yˢ.ys,sol2x.yˢ.ys;aerr=aerr,rerr=rerr);

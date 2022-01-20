@@ -1,13 +1,14 @@
+using Plots,Measures
+gr();
 ## Suite of ancillary routines for solving the vaccination PDE system
 # Coordinate system for numerical routines are (s,t)
 
 #%% Custom Structures
 # Tℓvℓ
 """
-Structure encoding the discretization of [t=t₀] in the (χ,τ)-plane
-The inner constructor allows for mutating an optional nds input so
-Julia can reduce the memory allocation. t0 is a scalar stored as 
-vector so the structures can be mutated
+Structure encoding the discretization of [t=t₀] in the (s,t)-plane.
+Structure wraps most fields in vectors for memory allocation
+purposes.
 """
 struct Tℓvℓ
 	t₀::Vector{Float64}
@@ -370,4 +371,40 @@ function myerrs(vlw::VecVw,vhigh::VecVw)
 	myerrs!(vlow,vhigh;rerr=rerr,aerr=aerr);
 
 	return aerr,rerr
+end
+
+#%% Plotting routine
+function RecipesBase.plot(V::Vector{Solℓvℓ})
+	# yˢ
+	taxis = [Y.t₀[1] for Y in V];
+	saxis = V[1].yˢ.tlvl.snds/365;
+
+	z = Matrix{Float64}(undef,length(taxis),length(saxis));
+	for i=1:size(z)[1]
+		z[i,:] = V[i].yˢ.ys;
+	end
+	p1 = heatmap(saxis,taxis,z,xlabel="age (years)",ylabel="time elapsed (days)",title="yˢ");
+
+	# yᵛ
+	taxis = [Y.t₀[1] for Y in V];
+	saxis = V[1].yᵛ.tlvl.snds/31;
+
+	z = Matrix{Float64}(undef,length(taxis),length(saxis));
+	for i=1:size(z)[1]
+		z[i,:] = V[i].yᵛ.ys;
+	end
+	p2 = heatmap(saxis,taxis,z,xlabel="time vax'd (months)",ylabel="",title="yᵛ");
+
+	# yⁱ
+	taxis = [Y.t₀[1] for Y in V];
+	saxis = V[1].yⁱ.tlvl.snds;
+
+	z = Matrix{Float64}(undef,length(taxis),length(saxis));
+	for i=1:size(z)[1]
+		z[i,:] = V[i].yⁱ.ys;
+	end
+	p3 = heatmap(saxis,taxis,z,xlabel="time inf'd (days)",ylabel="",title="yⁱ");
+
+	lay = @layout [a b c];
+	p = plot(p1,p2,p3,layout=lay,margin=5mm,size=(1200,400))
 end
