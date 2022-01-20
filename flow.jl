@@ -335,5 +335,73 @@ function pdesolve(;prm::DSymVFl=data())
 		Δt *= 2;
 	end
 
-	return ysol,taxis
+	return ysol
+end
+
+"""
+Compute the aggregate recovered population from the output of pdesolve
+"""
+function yʳsolve!(S::Vector{Solℓvℓ};
+		  prm::DSymVFl=data(),
+	          temp::VecVw=Vector{Float64}(undef,length(S)),
+		  tempyᵛ::Yℓvℓ=deepcopy(S[1].yᵛ),
+		  tempyⁱ::Yℓvℓ=deepcopy(S[1].yⁱ))
+	n = length(S);
+	taxis = [S[i].t₀[1] for i=1:n];
+
+	# Compute derivative vector of yʳ in temp
+	@inbounds for i=1:n
+		# ∫αyᵛ
+		tempyᵛ.ys[:] = α.(S[i].yᵛ.tlvl.snds,taxis[i];prm=prm);
+		∏!(tempyᵛ,S[i].yᵛ,tempyᵛ);
+		∫line!(tempyᵛ);
+		temp[i] = tempyᵛ.∫yds[1];
+
+		# ∫γyⁱ
+		tempyⁱ.ys[:] = γ.(S[i].yⁱ.tlvl.snds,taxis[i];prm=prm);
+		∏!(tempyⁱ,S[i].yⁱ,tempyⁱ);
+		∫line!(tempyⁱ);
+		temp[i] += tempyⁱ.∫yds[1];
+	end
+
+	# integrate in time by trapezoidal
+	fwd = @view temp[2:end];
+	prs = @view temp[1:end-1];
+	temp[2:end] = 0.5*(fwd+prs)*(taxis[2]-taxis[1]);
+	temp[1]=0.0;
+	cumsum!(temp,temp);
+end
+function yʳsolve(S::Vector{Solℓvℓ};
+		 prm::DSymVFl=data())
+	temp = Vector{Float64}(undef,length(S));
+	tempyᵛ = deepcopy(S[1].yᵛ);
+	tempyⁱ = deepcopy(S[1].yⁱ)
+
+	yʳsolve!(S;prm=prm,temp=temp,tempyᵛ=tempyᵛ,tempyⁱ=tempyⁱ);
+
+	return temp
+end
+""" 
+Plot the masses of compartments as they evolve in time
+"""
+function plotm(S::Vector{Solℓvℓ};prm::DSymVFl=data())
+	n = length(S);
+	@inbounds for i=1:n
+		∫line!(S[i].yˢ); ∫line!(S[i].yᵛ); ∫line!(S[i].yⁱ)
+	end
+
+	taxis = [S[i].t₀[1] for i=1:n];
+	yˢ = [S[i].yˢ.∫yds[1] for i=1:n];
+	yᵛ = [S[i].yᵛ.∫yds[1] for i=1:n];
+	yⁱ = [S[i].yⁱ.∫yds[1] for i=1:n];
+
+	yʳ = yʳsolve(S;prm=prm);
+
+	Σ = yˢ+yᵛ+yⁱ+yʳ;
+
+	p1 = plot(taxis,[yˢ,yᵛ,yⁱ,yʳ,Σ],labels=["∫yˢds" "∫yᵛds" "∫yⁱds" "∫yʳds" "Σ"],
+		  linewidth=3);	
+	hline!([1.0+prm[:ρ][1]],linewidth=3,linestyle=:dash,labels="theory Σ")
+	plot!(xlabel="time elapsed (days)",ylabel="mass");
+	plot!(xtickfontsize=10,ytickfontsize=10,xguidefontsize=12,yguidefontsize=12,size=(400,400));
 end
