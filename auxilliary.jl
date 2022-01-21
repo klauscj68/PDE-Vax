@@ -449,6 +449,7 @@ end
 Plot the errors between solution and its implicit boundary terms
 """
 function plotbd(S::Vector{Solℓvℓ};prm=data())
+	data!(prm);	
 	n = length(S);
 	taxis = [S[i].t₀[1] for i=1:n];
 
