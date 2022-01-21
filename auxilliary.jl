@@ -373,6 +373,20 @@ function myerrs(vlw::VecVw,vhigh::VecVw)
 	return aerr,rerr
 end
 
+"""
+Check if error vectors at each node fall within one of the two tolerances.
+If no storage is given, it writes to rerr vector.
+"""
+function myerrtst(aerr::VecVw,rerr::VecVw;
+		  prm::DSymVFl=data())	
+	@inbounds for i=1:length(aerr)
+		if (aerr[i]>prm[:atol][1])&&(rerr[i]>prm[:rtol][1])
+			return false
+		end
+	end
+	return true
+end
+
 #%% Plotting routine
 function RecipesBase.plot(V::Vector{Solℓvℓ})
 	# yˢ

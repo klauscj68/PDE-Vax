@@ -41,7 +41,11 @@ function data()
 
 	# parameters for how often and the res by which sol is stored
 	prm[:dwnsmp]=[0.1];
-	prm[:nndsmp]=[100.0];
+	prm[:nndsmp]=[500.0];
+
+	# normalization constants for fˢ,fⁱ. data! will mutate to correct
+	prm[:fˢη]=[1.0];
+	prm[:fⁱη]=[1.0];
 
 	return prm
 end
@@ -50,12 +54,32 @@ end
 Adjust the prm data set for variables that depend on others
 """
 function data!(prm::DSymVFl)
+	nnd = prm[:nnd][1]|>ceil|>Int64;
+
+	# Compute the normalization constants for initial conditions
+	#  First reset to 1 so get correct new factor
+	prm[:fˢη][1] = 1.0;
+	prm[:fⁱη][1] = 1.0;
+
+	#  Compute fˢ discretization and normalization
+	tlvl = Tℓvℓ(0.0,nnd,prm[:yˢrg]);
+	ys   = [fˢ(s;prm=prm) for s in tlvl.snds];
+	ylvl = Yℓvℓ(tlvl,ys);
+	∫line!(ylvl);
+	prm[:fˢη][1] = 1/ylvl.∫yds[1];
+
+	#  Compute fⁱ discretization and normalization
+	tlvl = Tℓvℓ(0.0,nnd,prm[:yⁱrg]);
+	ys   = [fⁱ(s;prm=prm) for s in tlvl.snds];
+	ylvl = Yℓvℓ(tlvl,ys);
+	∫line!(ylvl);
+	prm[:fⁱη][1] = prm[:ρ][1]/ylvl.∫yds[1];
+
 	# Compute the ρfⁱ(0) value
 	val = fⁱ(0.0;prm=prm);
 
 	# Compute the ∫βyⁱ at t=0
-	nnd = prm[:nnd][1]|>ceil|>Int64;
-	tlvl=Tℓvℓ(0.0,nnd,prm[:yⁱrg]);
+	tlvl = Tℓvℓ(0.0,nnd,prm[:yⁱrg]);
 	ys = [β(s,0.0;prm=prm)*fⁱ(s;prm=prm) for s in tlvl.snds];
 	ylvl = Yℓvℓ(tlvl,ys);
 	∫line!(ylvl);
@@ -66,6 +90,7 @@ function data!(prm::DSymVFl)
 	# Compute the βa value which matches and set dictionary to that
 	# 1/(ηa^b) = ρ/a^b => 1/η^b=ρ => η=ρ^-1/b
 	prm[:βa][1] =ρ^(-1/prm[:βb][1])*prm[:βa][1];
+	
 end
 
 #%% Equation terms
@@ -122,12 +147,12 @@ function fˢ(s::Float64;prm::DSymVFl=data())
 	if s<=0.0
 		return 0.0
 	else
-		return 2.884922631393703e-5*exp(-365/s)
+		return prm[:fˢη][1]*exp(-365/s)
 	end
 end
 function fᵛ(s::Float64;prm::DSymVFl=data())
 	return 0.0
 end
 function fⁱ(s::Float64;prm::DSymVFl=data())
-	return prm[:ρ][1]*1/14;
+	return prm[:ρ][1]*prm[:fⁱη][1];
 end

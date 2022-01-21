@@ -344,27 +344,27 @@ function pdesolve(;prm::DSymVFl=data())
 			# compute errors and adapt step if accuracy not sufficient
 			myerrs!(sol.yˢ.ys,sol2x.yˢ.ys;aerr=aerr,rerr=rerr);
 			aerr *= prm[:yˢrg][2]-prm[:yˢrg][1];
-			if (maximum(aerr)>prm[:atol][1])&&(maximum(rerr)>prm[:rtol][1])
+			if !myerrtst(aerr,rerr;prm=prm)
 				Δt*=0.5;
 				continue
 			end
 
 			myerrs!(sol.yᵛ.ys,sol2x.yᵛ.ys;aerr=aerr,rerr=rerr);
 			aerr *= prm[:yᵛrg][2]-prm[:yᵛrg][1];
-			if (maximum(aerr)>prm[:atol][1])&&(maximum(rerr)>prm[:rtol][1])
+			if !myerrtst(aerr,rerr;prm=prm)
 				Δt*=0.5;
 				continue
 			end
 
 			myerrs!(sol.yⁱ.ys,sol2x.yⁱ.ys;aerr=aerr,rerr=rerr);
 			aerr *= prm[:yⁱrg][2]-prm[:yⁱrg][1];
-			if (maximum(aerr)>prm[:atol][1])&&(maximum(rerr)>prm[:rtol][1])
+			if !myerrtst(aerr,rerr;prm=prm)
 				Δt*=0.5;
 				continue
 			end
 
 			myerrs!(yʳ,yʳ2x;aerr=yʳaerr,rerr=yʳrerr);
-			if (maximum(yʳaerr)>prm[:atol][1])&&(maximum(yʳrerr)>prm[:rtol][1])
+			if (yʳaerr[1]>prm[:atol][1])&&(yʳrerr[1]>prm[:rtol][1])
 				Δt*=0.5;
 				continue
 			end
