@@ -6,8 +6,12 @@ function data()
 	prm = Dict{Symbol,Vector{Float64}}();
 
 	# domain
+	#  Ranges should be the support of your initial data
+	#  data! will adjust so that domains correctly contain
+	#  support of solution over simulation time span. Needed
+	#  to correctly compute the bdflow equations
 	prm[:yˢrg] = [0.0,100.0*365];
-	prm[:yᵛrg] = [0.0,2*31.0];
+	prm[:yᵛrg] = [0.0,0.0];
 	prm[:yⁱrg] = [0.0,14.0];
 
 	prm[:Trg] = [0.0,31.0];
@@ -37,7 +41,7 @@ function data()
 
 	# ode discretization
 	prm[:atol]=[1e-6];
-	prm[:rtol]=[1e-4];
+	prm[:rtol]=[1e-3];
 
 	# parameters for how often and the res by which sol is stored
 	prm[:dwnsmp]=[0.1];
@@ -51,10 +55,17 @@ function data()
 end
 
 """
-Adjust the prm data set for variables that depend on others
+Adjust the prm data set for variables that depend on others. If you reiterate
+data! for now best ot do data()|>data! or else the yrg's will grow arbitrarily.
 """
 function data!(prm::DSymVFl)
 	nnd = prm[:nnd][1]|>ceil|>Int64;
+
+	# Adjust the yrg's to correctly contain the support of initial data
+	# during simulation time span
+	prm[:yˢrg][2] += prm[:Trg][2];
+	prm[:yᵛrg][2] += prm[:Trg][2];
+	prm[:yⁱrg][2] += prm[:Trg][2];
 
 	# Compute the normalization constants for initial conditions
 	#  First reset to 1 so get correct new factor
@@ -130,29 +141,33 @@ function λ(s::Float64,t::Float64;prm::DSymVFl=data())
 	if (s<=25550.0)||(t<=0.0)
 		return 0.0
 	else
-		return prm[:λ][1]*exp(-1/t)*exp(-365/(s-70))
+		return prm[:λ][1]*exp(-1/t)*exp(-365/(s-25550))
 	end
 end
 function ∂vλ(s::Float64,t::Float64;prm::DSymVFl=data())
 	if (s<=25550.0)||(t<=0.0)
 		return 0.0
 	else
-		return prm[:λ][1]*( (1/t^2*exp(-1/t))*exp(-365/(s-70))
-				     + exp(-1/t)*(365/(s-70)^2*exp(-365/(s-70))) )
+		return prm[:λ][1]*( (1/t^2*exp(-1/t))*exp(-365/(s-25550))
+				     + exp(-1/t)*(365/(s-25550)^2*exp(-365/(s-25550))) )
 	end
 end
 
 #%% Initial data
 function fˢ(s::Float64;prm::DSymVFl=data())
-	if s<=0.0
+	if (s<=0.0)||(s>=36500)
 		return 0.0
 	else
-		return prm[:fˢη][1]*exp(-365/s)
+		return prm[:fˢη][1]*exp(-365/s)*exp(365/(s-36500))
 	end
 end
 function fᵛ(s::Float64;prm::DSymVFl=data())
 	return 0.0
 end
 function fⁱ(s::Float64;prm::DSymVFl=data())
-	return prm[:ρ][1]*prm[:fⁱη][1];
+	if (s<=0.0)||(s>=14.0)
+		return 0.0
+	else
+		return prm[:ρ][1]*prm[:fⁱη][1]*exp(1e-3/(s-14))
+	end
 end
