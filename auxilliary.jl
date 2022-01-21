@@ -431,3 +431,51 @@ function RecipesBase.plot(S::Vector{Solℓvℓ},yʳ::VecVw;
 	plot!(xlabel="time elapsed (days)",ylabel="mass");
 	plot!(xtickfontsize=10,ytickfontsize=10,xguidefontsize=12,yguidefontsize=12,size=(400,400));
 end
+"""
+Plot the errors between solution and its implicit boundary terms
+"""
+function plotbd(S::Vector{Solℓvℓ};prm=data())
+	n = length(S);
+	taxis = [S[i].t₀[1] for i=1:n];
+
+	yˢ = fill(0.0,n);
+	yᵛ = similar(yˢ); yⁱ = similar(yˢ);
+
+	# allocate for nonlocals and compute theory ∂-values
+	nls = nonlocalsinit(S[1].t₀[1];prm=prm);
+	@inbounds for i=1:n
+		nonlocals!(S[i];temp=nls,prm=prm);
+
+		yᵛ[i] = nls[:∫λyˢ].∫yds[1];
+		yⁱ[i] = (nls[:∫yˢ].∫yds[1]+nls[:∫Imαyᵛ].∫yds[1])*nls[:∫βyⁱ].∫yds[1];
+	end
+
+	yˢaerr = abs.([ S[i].yˢ.ys[1]-yˢ[i] for i=1:n]);
+	yᵛaerr = abs.([ S[i].yᵛ.ys[1]-yᵛ[i] for i=1:n]);
+	yⁱaerr = abs.([ S[i].yⁱ.ys[1]-yⁱ[i] for i=1:n]);
+
+	yᵛ = [ (yᵛ[i] >= prm[:atol][1] ? yᵛ[i] : prm[:atol][1]) for i=1:n];
+	yⁱ = [ (yⁱ[i] >= prm[:atol][1] ? yⁱ[i] : prm[:atol][1]) for i=1:n];
+
+	yˢrerr = yˢ;
+	yᵛrerr = yᵛaerr./yᵛ;
+	yⁱrerr = yⁱaerr./yⁱ;
+
+	yˢaerr *= (prm[:yˢrg][2]-prm[:yˢrg][1]);
+	yᵛaerr *= (prm[:yᵛrg][2]-prm[:yᵛrg][1]);
+	yⁱaerr *= (prm[:yⁱrg][2]-prm[:yⁱrg][1]);
+
+	p1 = plot(taxis,[yˢaerr,yᵛaerr,yⁱaerr],labels=["yˢ" "yᵛ" "yⁱ"],
+		  xlabel="taxis pt",ylabel="error",title="Absolute Errors Implicit Bd",linewidth=3);
+	plot!(p1,xguidefontsize=12,yguidefontsize=12,xtickfontsize=10,ytickfontsize=10,
+	      legendfontsize=10,margin=5mm);
+
+	p2 = plot(taxis,[yˢrerr,yᵛrerr,yⁱrerr],labels=["yˢ" "yᵛ" "yⁱ"],
+		  xlabel="taxis pt",title="Relative Errors Implicit Bd",linewidth=3);
+	plot!(p2,xguidefontsize=12,yguidefontsize=12,xtickfontsize=10,ytickfontsize=10,
+	      legendfontsize=10,margin=5mm);
+
+	lay = @layout [a b];
+	plot(p1,p2,size=(800,400))
+
+end
