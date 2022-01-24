@@ -22,19 +22,19 @@ function data()
 
 	# β parameters
 	#  mean of 3.1
-	prm[:βa]=[3.5];
-	prm[:βb]=[2.0];
+	prm[:βθ]=[3.5];
+	prm[:βα]=[2.0];
 
 	# γ parameters
 	#  mean of 7.1
-	prm[:γa]=[8.0];
-	prm[:γb]=[2.5];
+	prm[:γθ]=[8.0];
+	prm[:γα]=[2.5];
 
 	# λ parameters
 	prm[:λ]=[1.5];
 
 	# mass of t₀ infected
-	prm[:ρ] = [0.0051];
+	prm[:ρ] = [0.0051*1e2];
 
 	# spatial discretization
 	prm[:nnd] = [500.0];
@@ -98,9 +98,9 @@ function data!(prm::DSymVFl)
 
 	ρ = val/∫val;
 
-	# Compute the βa value which matches and set dictionary to that
+	# Compute the βθ value which matches and set dictionary to that
 	# 1/(ηa^b) = ρ/a^b => 1/η^b=ρ => η=ρ^-1/b
-	prm[:βa][1] =ρ^(-1/prm[:βb][1])*prm[:βa][1];
+	prm[:βθ][1] =ρ^(-1/prm[:βα][1])*prm[:βθ][1];
 	
 end
 
@@ -119,22 +119,22 @@ function ∂vα(s::Float64,t::Float64;prm::DSymVFl=data())
 end
 
 function β(s::Float64,t::Float64;prm::DSymVFl=data())
-	val = prm[:βb][1]/prm[:βa][1]*(s/prm[:βa][1])^(prm[:βb][1]-1);
+	val = prm[:βα][1]/prm[:βθ][1]*(s/prm[:βθ][1])^(prm[:βα][1]-1);
 
 	return val
 end
 function ∂vβ(s::Float64,t::Float64;prm::DSymVFl=data())
-	return prm[:βb][1]/prm[:βa][1]*(s/prm[:βa][1])^(prm[:βb][1]-2.)*(prm[:βb][1]-1.)*1/prm[:βa][1]
+	return prm[:βα][1]/prm[:βθ][1]*(s/prm[:βθ][1])^(prm[:βα][1]-2.)*(prm[:βα][1]-1.)*1/prm[:βθ][1]
 
 end
 
 function γ(s::Float64,t::Float64;prm::DSymVFl=data())
-	val = prm[:γb][1]/prm[:γa][1]*(s/prm[:γa][1])^(prm[:γb][1]-1);
+	val = prm[:γα][1]/prm[:γθ][1]*(s/prm[:γθ][1])^(prm[:γα][1]-1);
 
 	return val
 end
 function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data())
-	return prm[:γb][1]/prm[:γa][1]*(s/prm[:γa][1])^(prm[:γb][1]-2.)*(prm[:γb][1]-1.)*1/prm[:γa][1]
+	return prm[:γα][1]/prm[:γθ][1]*(s/prm[:γθ][1])^(prm[:γα][1]-2.)*(prm[:γα][1]-1.)*1/prm[:γθ][1]
 end
 function λ(s::Float64,t::Float64;prm::DSymVFl=data())
 	# Two week rollout before steady state hazard
@@ -165,7 +165,7 @@ function fᵛ(s::Float64;prm::DSymVFl=data())
 	return 0.0
 end
 function fⁱ(s::Float64;prm::DSymVFl=data())
-	if (s<=0.0)||(s>=14.0)
+	if (s>=14.0)
 		return 0.0
 	else
 		return prm[:ρ][1]*prm[:fⁱη][1]*exp(1e-3/(s-14))

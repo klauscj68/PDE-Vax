@@ -266,9 +266,11 @@ function euler!(Δt::Float64,Y::Solℓvℓ,yʳ::VecVw;
 end
 
 """
-Solve the pde system with implicit, nonlocal ∂-terms
+Solve the pde system with implicit, nonlocal ∂-terms. The flag
+says whether progress through the pde should be printed to stdout
 """
-function pdesolve(;prm::DSymVFl=data())
+function pdesolve(;prm::DSymVFl=data(),
+	           flagprg::Bool=true)
 	# Adjust prm to satisfy initial conditions
 	data!(prm);
 
@@ -380,8 +382,10 @@ function pdesolve(;prm::DSymVFl=data())
 			yʳsol[pos] = myinterp([sol0.t₀[1],sol2x.t₀[1]],[yʳ[1],yʳ2x[1]],taxis[pos]);
 			pos += 1;
 			prg += δprg;
-			printprg = prg/(prm[:Trg][2]-prm[:Trg][1]);
-			println("Simulation progress: $printprg/1"); 
+			if flagprg
+				printprg = prg/(prm[:Trg][2]-prm[:Trg][1]);
+				println("Simulation progress: $printprg/1"); 
+			end
 		end
 		sol0 = deepcopy(sol2x); nonlocals!(sol0;temp=nls,prm=prm); yʳ0[:] = deepcopy(yʳ2x);
 		Δt *= 2;
