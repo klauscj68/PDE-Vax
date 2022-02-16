@@ -118,6 +118,7 @@ VecVw = Union{
 DSymFl = Dict{Symbol,Float64};
 DSymVFl = Dict{Symbol,Vector{Float64}};
 DSymYℓvℓ = Dict{Symbol,Yℓvℓ};
+DSymBool = Dict{Symbol,Bool};
 
 #%% Interpolation routines
 # myfindfirst
