@@ -1,4 +1,4 @@
-using Plots,Measures
+using Plots,Measures,Random,CSV,DataFrames
 gr();
 ## Suite of ancillary routines for solving the vaccination PDE system
 # Coordinate system for numerical routines are (s,t)
@@ -116,7 +116,9 @@ VecVw = Union{
 	      SubArray{Float64, 1, Vector{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}}, true}, # Slice of Yℓvℓ.Tℓvℓ.snds[:]
 	     };
 DSymFl = Dict{Symbol,Float64};
+DStrFl = Dict{String,Float64};
 DSymVFl = Dict{Symbol,Vector{Float64}};
+DStrVFl = Dict{String,Vector{Float64}};
 DSymYℓvℓ = Dict{Symbol,Yℓvℓ};
 DSymBool = Dict{Symbol,Bool};
 
@@ -189,7 +191,7 @@ function myinterp(t::Float64,y1::Yℓvℓ,y2::Yℓvℓ)
 
 	return ynew
 end
-function myinterp(t,y1::Solℓvℓ,y2::Solℓvℓ)
+function myinterp(t::Float64,y1::Solℓvℓ,y2::Solℓvℓ)
 	@assert (t>=y1.t₀[1])&&(t<=y2.t₀[1]) "time levels not sequential in myinterp"
 
 	s = (t-y1.t₀[1])/(y2.t₀[1]-y1.t₀[1]);
@@ -494,4 +496,133 @@ function plotbd(S::Vector{Solℓvℓ};prm=data())
 	lay = @layout [a b];
 	plot(p1,p2,size=(800,400))
 
+end
+
+# Routines to save a random number generator
+#%% mysaverng
+"""
+Given a MersenneTwister rng, save its internal states to csv files which may be reloaded for
+restarting future runs.
+"""
+function mysaverng(rng::MersenneTwister)
+	# Loop over fieldnames of rng and save to their own csv's
+	#  One of the fields was a structure of its own and needed slightly different handling
+	for key in fieldnames(typeof(rng))
+		if key != :state
+			df = DataFrame(string(key)=>getfield(rng,key));
+		else
+			ram = getfield(rng,key);
+			df = DataFrame(string(key)=>ram.val);
+		end
+		CSV.write("RNG"*string(key)*".csv",df);
+	end
+	return true
+end
+
+#%% myloadrng
+"""
+Given a MersenneTwister saved into csv's like my mysaverng function, restore a rng with these settings.
+fname is the prefix that the CSV files begin with.
+"""
+function myloadrng(fname::String="RNG")
+	fields = ["seed","state","vals","ints","idxF","idxI","adv","adv_jump","adv_vals","adv_ints"];
+	
+	# Seed
+	DF = CSV.read(fname*"seed.csv",DataFrame);
+	myseed = convert(Vector{UInt32},DF[!,1]);
+
+	# State
+	DF = CSV.read(fname*"state.csv",DataFrame);
+	mystate = Random.DSFMT.DSFMT_state(convert(Vector{Int32},DF[!,1]));
+
+	# vals
+	DF = CSV.read(fname*"vals.csv",DataFrame);
+	myvals = convert(Vector{Float64},DF[!,1]);
+
+	# ints
+	DF = CSV.read(fname*"ints.csv",DataFrame);
+	myints = convert(Vector{UInt128},DF[!,1]);
+
+	# idxF
+	DF = CSV.read(fname*"idxF.csv",DataFrame);
+	myidxF = convert(Int64,DF[!,1][1]);
+
+	# idxI
+        DF = CSV.read(fname*"idxI.csv",DataFrame);
+	myidxI = convert(Int64,DF[!,1][1]);
+
+	# adv
+	DF = CSV.read(fname*"adv.csv",DataFrame);
+	myadv = convert(Int64,DF[!,1][1]);
+
+	# adv_jump
+	DF = CSV.read(fname*"adv_jump.csv",DataFrame);
+	myadv_jump = convert(BigInt,DF[!,1][1]);
+
+	# adv_vals
+	DF = CSV.read(fname*"adv_vals.csv",DataFrame);
+	myadv_vals = convert(Int64,DF[!,1][1]);
+
+	# adv_ints
+	DF = CSV.read(fname*"adv_ints.csv",DataFrame,type=Int64);
+	myadv_ints = convert(Int64,DF[!,1][1]);
+
+	return MersenneTwister(myseed,mystate,myvals,myints,myidxF,myidxI,myadv,myadv_jump,myadv_vals,myadv_ints)
+end
+
+# Routines to store a dictionary into a vector
+# wrtprm
+"""
+Write the prm dictionary to a column vector for storing to csv's
+Uses multiple dispatch
+call with no args: returns the dimension of column vector needed to store 
+                   and list of keys
+call with dictionary etc: returns the column vector stored in order of keys(prm)
+"""
+function wrtprm()
+	prm = data(); vkeys = [key for key in keys(prm)];
+	
+	# Create a vector of aprp size
+	nelm = length(vkeys);
+
+	V = Vector{Float64}(undef,nelm);
+	@inbounds for i=1:nelm
+		V[i] = prm[vkeys[i]][1];
+	end
+		       
+	return prm,vkeys,V
+end
+function wrtprm!(prm::Dict{Symbol,Vector{Float64}},vkeys::Vector{Symbol},
+                   V::VecVw)
+
+	@inbounds for i=1:length(vkeys)
+		V[i] = prm[vkeys[i]][1];
+	end
+	
+end
+function wrtprm!(prm1::Dict{Symbol,Vector{Float64}},
+		 prm2::Dict{Symbol,Vector{Float64}})
+	@inbounds for key in keys(prm1)
+		prm2[key][:] = prm1[key];
+	end
+end
+
+# rdprm
+"""
+Read a column vector formatted like wrtprm into a dictionary for 
+restarting runs
+"""
+function rdprm(V::Vector{Float64},vkeys::Vector{Symbol})
+	prm=Dict{Symbol,Vector{Float64}}();
+	@inbounds for i=1:length(vkeys)
+		prm[vkeys[i]] = [V[i]];
+	end
+	
+	# Handle keys with multiple components (note these were never varied)
+	prm0 = data();
+	@inbounds for key in [:yˢrg₀,:yᵛrg₀,:yⁱrg₀,:Trg,:yˢrg,:yᵛrg,:yⁱrg]
+		prm[key] = deepcopy(prm0[key]);
+	end
+
+	return prm,vkeys
 end

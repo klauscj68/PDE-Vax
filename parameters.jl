@@ -10,11 +10,17 @@ function data()
 	#  data! will adjust so that domains correctly contain
 	#  support of solution over simulation time span. Needed
 	#  to correctly compute the bdflow equations
-	prm[:yˢrg] = [0.0,100.0*365];
-	prm[:yᵛrg] = [0.0,0.0];
-	prm[:yⁱrg] = [0.0,14.0];
+	prm[:yˢrg₀] = [0.0,100.0*365];
+	prm[:yᵛrg₀] = [0.0,0.0];
+	prm[:yⁱrg₀] = [0.0,14.0];
 
-	prm[:Trg] = [0.0,31.0];
+	#  These are overwritten in data! to match actual simulation
+	#  parameters
+	prm[:yˢrg] = [NaN,NaN];
+	prm[:yᵛrg] = [NaN,NaN];
+	prm[:yⁱrg] = [NaN,NaN];
+
+	prm[:Trg] = [0.0,138.0];
 
 	# α parameters
 	prm[:αL] = [14.0];
@@ -44,28 +50,34 @@ function data()
 	prm[:rtol]=[1e-3];
 
 	# parameters for how often and the res by which sol is stored
-	prm[:dwnsmp]=[0.1];
+	prm[:dwnsmp]=[1.0];
 	prm[:nndsmp]=[500.0];
 
 	# normalization constants for fˢ,fⁱ. data! will mutate to correct
 	prm[:fˢη]=[1.0];
 	prm[:fⁱη]=[1.0];
 
+	# placeholder for writing the ℓerr in abc
+	prm[:ℓerr] = [NaN];
+
 	return prm
 end
 
 """
-Adjust the prm data set for variables that depend on others. If you reiterate
-data! for now best ot do data()|>data! or else the yrg's will grow arbitrarily.
+Adjust the prm data set for variables that depend on others. 
 """
 function data!(prm::DSymVFl)
 	nnd = prm[:nnd][1]|>ceil|>Int64;
 
 	# Adjust the yrg's to correctly contain the support of initial data
 	# during simulation time span
-	prm[:yˢrg][2] += prm[:Trg][2];
-	prm[:yᵛrg][2] += prm[:Trg][2];
-	prm[:yⁱrg][2] += prm[:Trg][2];
+	prm[:yˢrg][1] = prm[:yˢrg₀][1];
+	prm[:yᵛrg][1] = prm[:yᵛrg₀][1];
+	prm[:yⁱrg][1] = prm[:yⁱrg₀][1];
+
+	prm[:yˢrg][2] = prm[:yˢrg₀][2] + prm[:Trg][2];
+	prm[:yᵛrg][2] = prm[:yᵛrg₀][2] + prm[:Trg][2];
+	prm[:yⁱrg][2] = prm[:yⁱrg₀][2] + prm[:Trg][2];
 
 	# Compute the normalization constants for initial conditions
 	#  First reset to 1 so get correct new factor
