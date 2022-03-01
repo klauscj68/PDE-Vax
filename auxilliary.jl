@@ -626,3 +626,17 @@ function rdprm(V::Vector{Float64},vkeys::Vector{Symbol})
 
 	return prm,vkeys
 end
+
+#%% Miscellaneous
+"""
+A normal distribution but rescaled to have height 1 at mean
+"""
+function mynrm(μ::Float64,σ::Float64,x::Float64)
+	return exp(-0.5*(x-μ)^2/σ^2);
+end
+"""
+Derivative of the above
+"""
+function ∂mynrm(μ::Float64,σ::Float64,x::Float64)
+	return mynrm(μ,σ,x)*(-(x-μ)/σ^2)
+end

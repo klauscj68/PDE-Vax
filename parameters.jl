@@ -149,28 +149,72 @@ function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data())
 	return prm[:γα][1]/prm[:γθ][1]*(s/prm[:γθ][1])^(prm[:γα][1]-2.)*(prm[:γα][1]-1.)*1/prm[:γθ][1]
 end
 function λ(s::Float64,t::Float64;prm::DSymVFl=data())
+	# Formula: b₁(s)*{ b₂(s)*[(1-σ)*λ₁(t)+(σ-1)*λ₂(t)] + λ₂(t) }
+	syr = s/365;
 	# Two week rollout before steady state hazard
-	if (s<=25550.0)||(t<=0.0)
+	if (syr<=20.0) # Age 20yrs or before Dec 15th (starting Oct 1)
 		return 0.0
+	elseif (syr>20.0)&&(syr<70.0)
+		b₁ = exp(-2/(syr-20));
+		b₂ = exp(-2/(70-syr))/0.83;
+
+		λ₁ = 0.002*mynrm(105.0,10.0,t) + 0.002*mynrm(140.0,7.5,t);
+		λ₂ = 0.001*mynrm(93.0,6.0,t) + 0.013*mynrm(130.0,12.5,t);
+		σ = (70.0-syr)/50;
+
+		return b₁*( b₂*((1-σ)*λ₁+(σ-1)*λ₂) + λ₂ )
 	else
-		return prm[:λ][1]*exp(-1/t)*exp(-365/(s-25550))
+		b₁ = exp(-2/(syr-20));
+		λ₂ = 0.001*mynrm(93.0,6.0,t) + 0.013*mynrm(130.0,12.5,t);
+
+		return b₁*λ₂
 	end
 end
 function ∂vλ(s::Float64,t::Float64;prm::DSymVFl=data())
-	if (s<=25550.0)||(t<=0.0)
+	syr = s/365;
+	if (syr<=20.0)
 		return 0.0
+	elseif (syr>20.0)&&(syr<70.0)
+		b₁ = exp(-2/(syr-20));
+		b₂ = exp(-2/(70-syr))/0.83;
+
+		λ₁ = 0.002*mynrm(105.0,10.0,t) + 0.002*mynrm(140.0,7.5,t);
+		λ₂ = 0.001*mynrm(93.0,6.0,t) + 0.013*mynrm(130.0,12.5,t);
+		σ = (70.0-syr)/50;
+
+		∂b₁ = exp(-2/(syr-20))*(2/(syr-20)^2)/365;
+		∂b₂ = exp(-2/(70-syr))/0.83*(-2/(70-syr)^2)/365;
+
+		∂λ₁ = 0.002*∂mynrm(105.0,10.0,t) + 0.002*∂mynrm(140.0,7.5,t);
+		∂λ₂ = 0.001*∂mynrm(93.0,6.0,t) + 0.013*∂mynrm(130.0,12.5,t);
+		∂σ = -1/50/365;
+
+		val = ( ∂b₁*(b₂*((1-σ)*λ₁+(σ-1)*λ₂) + λ₂) + 
+		       b₁*( ∂b₂*((1-σ)*λ₁+(σ-1)*λ₂)
+			   + b₂*(-∂σ*λ₁ + (1-σ)*∂λ₁ + ∂σ*λ₂ + (σ-1)*∂λ₂) + ∂λ₂
+ 		          )
+		      );
+
+		return val
 	else
-		return prm[:λ][1]*( (1/t^2*exp(-1/t))*exp(-365/(s-25550))
-				     + exp(-1/t)*(365/(s-25550)^2*exp(-365/(s-25550))) )
+		b₁ = exp(-2/(syr-20));
+		λ₂ = 0.001*mynrm(93.0,6.0,t) + 0.013*mynrm(130.0,12.5,t);
+
+		∂b₁ = exp(-2/(syr-20))*(2/(syr-20)^2)/365;
+		∂λ₂ = 0.001*∂mynrm(93.0,6.0,t) + 0.013*∂mynrm(130.0,12.5,t);
+
+		val = ∂b₁*λ₂ + b₁*∂λ₂
+		return val
 	end
 end
 
 #%% Initial data
 function fˢ(s::Float64;prm::DSymVFl=data())
-	if (s<=0.0)||(s>=36500)
+	syr = s/365;
+	if (s<=0.0)||(syr>=100)
 		return 0.0
 	else
-		return prm[:fˢη][1]*exp(-365/s)*exp(365/(s-36500))
+		return prm[:fˢη][1]*exp(-1/s)*exp(-6/(100-s))
 	end
 end
 function fᵛ(s::Float64;prm::DSymVFl=data())
@@ -180,6 +224,6 @@ function fⁱ(s::Float64;prm::DSymVFl=data())
 	if (s>=14.0)
 		return 0.0
 	else
-		return prm[:ρ][1]*prm[:fⁱη][1]*exp(1e-3/(s-14))
+		return prm[:ρ][1]*prm[:fⁱη][1]*exp(-1e-3/(14-s))
 	end
 end
