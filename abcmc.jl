@@ -47,11 +47,32 @@ function abcsmp!(prm::DSymVFl;
 		 prmrg::DSymVFl=mcdata()[1],
 		 prmvary::DSymBool=mcdata()[2],
 		 rng::MersenneTwister=MersenneTwister())
+	flagfd = false;
 
-	for key in keys(prmvary)
-		if prmvary[key]
-			prm[key][1] = prmrg[key][1]+rand(rng)*(prmrg[key][2]-prmrg[key][1]);
+	while !flagfd
+		for key in keys(prmvary)
+			if prmvary[key]
+				prm[key][1] = prmrg[key][1]+rand(rng)*(prmrg[key][2]-prmrg[key][1]);
+			end
 		end
+
+		# Enforce dependent relationships
+		data!(prm);
+
+		# Check if recovery is less than 3 weeks
+		γ = Weibull(prm[:γα][1],prm[:γθ][1]);
+		γμ = mean(γ);
+		if γμ > 21.0
+			continue
+		end
+
+		# Check if infectious transmission is shorter than recovery
+		β = Weibull(prm[:βα][1],prm[:βθ][1]);
+		βμ = mean(β);
+		if βμ > γμ
+			continue
+		end
+		flagfd = true;
 	end
 end
 
@@ -159,8 +180,7 @@ function abcrun(nsmp::Int64;
 	println("progress through abc sampling: 0.0/1.0 ...")
 	prg = 0.0;
 	@inbounds for i=1:nsmp
-		abcsmp!(prm;rng=rng,prmrg=prmrg,prmvary=prmvary);
-		data!(prm);
+		abcsmp!(prm;rng=rng,prmrg=prmrg,prmvary=prmvary);	
 		ysol,_ = pdesolve(;prm=prm,flagprg=false); 
 		prm[:ℓerr][1] = ℓerr(ysol;prm=prm,yˢ=ODHyˢ,yᵛ=ODHyᵛ,yⁱ=ODHyⁱ,ram=ram);
 		Snow = @view S[:,i];
