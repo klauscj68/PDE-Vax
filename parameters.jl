@@ -76,8 +76,8 @@ function data!(prm::DSymVFl)
 	prm[:yⁱrg][1] = prm[:yⁱrg₀][1];
 
 	prm[:yˢrg][2] = prm[:yˢrg₀][2] + prm[:Trg][2];
-	prm[:yᵛrg][2] = prm[:yᵛrg₀][2] + prm[:Trg][2];
-	prm[:yⁱrg][2] = prm[:yⁱrg₀][2] + prm[:Trg][2];
+	prm[:yᵛrg][2] = 31.0; #prm[:yᵛrg₀][2] + prm[:Trg][2];
+	prm[:yⁱrg][2] = 31.0; #prm[:yⁱrg₀][2] + prm[:Trg][2];
 
 	# Compute the normalization constants for initial conditions
 	#  First reset to 1 so get correct new factor

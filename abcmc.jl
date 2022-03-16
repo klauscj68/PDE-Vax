@@ -23,7 +23,7 @@ function abcdata()
 	prmvary[:βα] = true;
 
 	# γ parameters
-	prmrg[:γθ]=[1.0,10.0];
+	prmrg[:γθ]=[1.0,25.0];
 	prmvary[:γθ] = true;
 
 	prmrg[:γα]=[2.0,8.0];
@@ -61,14 +61,14 @@ function abcsmp!(prm::DSymVFl;
 
 		# Check if recovery is less than 3 weeks
 		γ = Weibull(prm[:γα][1],prm[:γθ][1]);
-		γμ = mean(γ);
-		if γμ > 21.0
+		γcdf = cdf(γ,0.99);
+		if γcdf > 21.0
 			continue
 		end
 
 		# Check if infectious transmission is shorter than recovery
 		β = Weibull(prm[:βα][1],prm[:βθ][1]);
-		βμ = mean(β);
+		γμ = mean(γ); βμ = mean(β);
 		if βμ > γμ
 			continue
 		end
