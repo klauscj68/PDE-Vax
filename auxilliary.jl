@@ -640,3 +640,60 @@ Derivative of the above
 function ∂mynrm(μ::Float64,σ::Float64,x::Float64)
 	return mynrm(μ,σ,x)*(-(x-μ)/σ^2)
 end
+"""
+A Heaviside function (greek letter Eta) defined here as
+H(x) = 1/2/δ*(x+δ)*1_[|x|≤δ] + 1_[x>δ].
+"""
+function Ηδ(x::Float64;δ::Float64=1.0)
+	if x≤-δ
+		return 0.0
+	elseif abs(x)≤δ
+		return (x+δ)/(2*δ)
+	else
+		return 1.0
+	end
+end
+"""
+A mollified Heaviside function (greek letter Eta) to use for smooth
+bump functions. The mollifier is a continuous moving average:
+fρ = 1/2/ρ*∫^(x+ρ)_(x-ρ)f(s)ds.
+"""
+function Ηδρ(x::Float64;δ::Float64=1.0,ρ::Float64=1.0)
+	if (x-ρ≤-δ)&&(x+ρ≤-δ)
+		return 0.0
+	elseif (x-ρ≤-δ)&&(abs(x+ρ)≤δ)
+		return (x+ρ+δ)^2/(8*ρ*δ)
+	elseif (x-ρ≤-δ)&&(x+ρ>δ)
+		return (x+ρ)/(2*ρ)
+	elseif (abs(x-ρ)≤δ)&&(abs(x+ρ)≤δ)
+		return ( (x+ρ)^2 + 2*δ*(x+ρ) - (x-ρ)^2 - 2*δ*(x-ρ) )/(8*ρ*δ)
+	elseif (abs(x-ρ)≤δ)&&(x+ρ>δ)
+		return ( 3*δ^2 - (x-ρ)^2 - 2*δ*(x-ρ) )/(8*ρ*δ) + (x+ρ-δ)/(2*ρ)
+	else
+		return 1.0
+	end
+end
+"""
+Derivative of the mollified Heaviside function (greek letter Eta) to use in
+bump function calculations
+"""
+function ∂Ηδρ(x::Float64;δ::Float64=1.0,ρ::Float64=1.0)
+	return ( Ηδ(x+ρ;δ=δ)-Ηδ(x-ρ;δ=δ) )/(2*ρ)
+end
+"""
+A mollified bump function over an interval built from the Heaviside functions.
+Idea is
+1_[a,b] = 1_[a,∞] - 1_[b,∞] ≈ Ηδρ(⋅-a) - Ηδρ(⋅-b)
+"""
+function ζδρ(x::Float64,
+	     a::Float64,b::Float64;δ::Float64=1.0,ρ::Float64=1.0)
+	return Ηδρ(x-a;δ=δ,ρ=ρ) - Ηδρ(x-b;δ=δ,ρ=ρ)
+end
+"""
+Derivative of the mollified bump function over an interval [a,b]
+built from the Heaviside function
+"""
+function ∂ζδρ(x::Float64,
+	      a::Float64,b::Float64;δ::Float64=1.0,ρ::Float64=1.0)
+	return ∂Ηδρ(x-a;δ=δ,ρ=ρ) - ∂Ηδρ(x-b;δ=δ,ρ=ρ)
+end
