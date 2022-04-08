@@ -313,21 +313,19 @@ function pdesolve(;prm::DSymVFl=data(),
 	nls1x = deepcopy(nls);
 	
 	# Initalize memory allocations for error analysis
-	aerr = Vector{Float64}(undef,nnd);
-	rerr = Vector{Float64}(undef,nnd);
-
-	yʳaerr = [0.0];
-	yʳrerr = [0.0];
+	aerr = [0.0];
+	rerr = [0.0];
 
 	# Store solution in ysol vector
 	ysol[1] = sol0 |> (x->srefine(nndsmp,x));
 	yʳ[1] = 0.0;
 
 	# Integrate the system by an adaptive Euler step
-	prg = 0.0; Δt = prm[:dwnsmp][1]; pos=2
+	prg = 0.0; Δt = prm[:dwnsmp][1]; pos=2; nΔtfail = 0;
 	while pos <= nsmp
 		flagfd = false;
-		while !flagfd
+		while !flagfd	
+
 			# single euler step
 			euler!(Δt,sol0,yʳ0;
 			       temp=sol,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,yʳtemp=yʳ,
@@ -343,30 +341,38 @@ function pdesolve(;prm::DSymVFl=data(),
 			       temp=sol2x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,yʳtemp=yʳ2x,
 			       prm=prm,nls=nls1x);
 
+			if Δt<=prm[:Δtmin][1]
+				nΔtfail += 1;
+				break
+			end
+
+			∫line!(sol.yˢ); ∫line!(sol.yᵛ); ∫line!(sol.yⁱ);
+			∫line!(sol2x.yˢ); ∫line!(sol2x.yᵛ); ∫line!(sol2x.yⁱ);
 			# compute errors and adapt step if accuracy not sufficient
-			myerrs!(sol.yˢ.ys,sol2x.yˢ.ys;aerr=aerr,rerr=rerr);
-			aerr *= prm[:yˢrg][2]-prm[:yˢrg][1];
+			aerr[1] = abs( sol.yˢ.∫yds[1]-sol2x.yˢ.∫yds[1] );
+			rerr[1] = aerr[1]/sol2x.yˢ.∫yds[1];
+			
 			if !myerrtst(aerr,rerr;prm=prm)
 				Δt*=0.5;
 				continue
 			end
 
-			myerrs!(sol.yᵛ.ys,sol2x.yᵛ.ys;aerr=aerr,rerr=rerr);
-			aerr *= prm[:yᵛrg][2]-prm[:yᵛrg][1];
+			aerr[1] = abs( sol.yᵛ.∫yds[1]-sol2x.yᵛ.∫yds[1] );
+			rerr[1] = aerr[1]/sol2x.yᵛ.∫yds[1];
+			if !myerrtst(aerr,rerr;prm=prm)
+				Δt*=0.5;
+				continue
+			end
+			
+			aerr[1] = abs( sol.yⁱ.∫yds[1]-sol2x.yⁱ.∫yds[1] );
+			rerr[1] = aerr[1]/sol2x.yⁱ.∫yds[1];
 			if !myerrtst(aerr,rerr;prm=prm)
 				Δt*=0.5;
 				continue
 			end
 
-			myerrs!(sol.yⁱ.ys,sol2x.yⁱ.ys;aerr=aerr,rerr=rerr);
-			aerr *= prm[:yⁱrg][2]-prm[:yⁱrg][1];
-			if !myerrtst(aerr,rerr;prm=prm)
-				Δt*=0.5;
-				continue
-			end
-
-			myerrs!(yʳ,yʳ2x;aerr=yʳaerr,rerr=yʳrerr);
-			if (yʳaerr[1]>prm[:atol][1])&&(yʳrerr[1]>prm[:rtol][1])
+			myerrs!(yʳ,yʳ2x;aerr=aerr,rerr=rerr);
+			if (aerr[1]>prm[:atol][1])&&(rerr[1]>prm[:rtol][1])
 				Δt*=0.5;
 				continue
 			end
@@ -391,5 +397,6 @@ function pdesolve(;prm::DSymVFl=data(),
 		Δt *= 2;
 	end
 
+	println("Number of times Δt was too small for refinement: $nΔtfail");
 	return ysol,yʳsol
 end
