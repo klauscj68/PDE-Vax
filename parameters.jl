@@ -20,7 +20,7 @@ function data()
 	prm[:yᵛrg] = [NaN,NaN];
 	prm[:yⁱrg] = [NaN,NaN];
 
-	prm[:Trg] = [0.0,.75*138.0];
+	prm[:Trg] = [0.0,138.0];
 
 	# α parameters
 	prm[:αL] = [14.0];
@@ -43,16 +43,16 @@ function data()
 	prm[:ρ] = [0.0108126];
 
 	# spatial discretization
-	prm[:nnd] = [8000.0];
+	prm[:nnd] = [6000.0];
 
 	# ode discretization
 	prm[:atol]=[1e-8];
 	prm[:rtol]=[1e-5];
-	prm[:Δtmin]=[5e-13];
+	prm[:Δtmin]=[5e-5];
 
 	# parameters for how often and the res by which sol is stored
 	prm[:dwnsmp]=[1.0];
-	prm[:nndsmp]=[8000.0];
+	prm[:nndsmp]=[6000.0];
 
 	# normalization constants for fˢ,fⁱ. data! will mutate to correct
 	prm[:fˢη]=[1.0];
@@ -61,6 +61,8 @@ function data()
 	# placeholder for writing the ℓerr in abc
 	prm[:ℓerr] = [NaN];
 
+	# placeholder for storing how many times solver hit the Δtmin
+	prm[:nΔtfail] = [NaN];
 	return prm
 end
 
@@ -174,7 +176,7 @@ end
 #%% Initial data
 function fˢ(s::Float64;prm::DSymVFl=data())
 	syr = s/365;
-	val = prm[:fˢη][1]*ζδρ(syr,5.0,95.0;δ=0.5,ρ=0.25);
+	val = prm[:fˢη][1]*ζδρ(syr,2.0,98.0;δ=0.25,ρ=0.25);
 
 	return val
 end

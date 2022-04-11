@@ -395,8 +395,15 @@ function pdesolve(;prm::DSymVFl=data(),
 		end
 		sol0 = deepcopy(sol2x); nonlocals!(sol0;temp=nls,prm=prm); yʳ0[:] = deepcopy(yʳ2x);
 		Δt *= 2;
+
+		if ( (sol0.yˢ.∫yds[1]<-1)||(sol0.yᵛ.∫yds[1]<-1)||(sol0.yⁱ.∫yds[1]<-1)||
+		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] > 2+prm[:ρ][1]) )
+			@warn "simulation failed at these tolerances"
+			break
+		end
 	end
 
+	prm[:nΔtfail][1] = nΔtfail;
 	println("Number of times Δt was too small for refinement: $nΔtfail");
 	return ysol,yʳsol
 end

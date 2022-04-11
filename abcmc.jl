@@ -19,11 +19,11 @@ function abcdata()
 	# β parameters
 	#  θ-scale param not included because it is determined by the f^i
 	#  initial condition
-	prmrg[:βα]=[2.0,8.0];
+	prmrg[:βα]=[5.0,20.0];
 	prmvary[:βα] = true;
 
 	# γ parameters
-	prmrg[:γθ]=[1.0,25.0];
+	prmrg[:γθ]=[1.0,18.0];
 	prmvary[:γθ] = true;
 
 	prmrg[:γα]=[2.0,8.0];
@@ -34,7 +34,7 @@ function abcdata()
 	prmvary[:λ] = false;
 
 	# mass of t₀ infected
-	prmrg[:ρ] = [0.001,0.1];
+	prmrg[:ρ] = [0.001,0.05];
 	prmvary[:ρ] = true;
 
 	return prmrg,prmvary
@@ -61,8 +61,8 @@ function abcsmp!(prm::DSymVFl;
 
 		# Check if recovery is less than 3 weeks
 		γ = Weibull(prm[:γα][1],prm[:γθ][1]);
-		γcdf = cdf(γ,0.99);
-		if γcdf > 21.0
+		γqt = quantile(γ,0.99);
+		if γqt > 21.0
 			continue
 		end
 
@@ -74,6 +74,7 @@ function abcsmp!(prm::DSymVFl;
 		end
 		flagfd = true;
 	end
+	
 end
 
 """
@@ -182,7 +183,11 @@ function abcrun(nsmp::Int64;
 	@inbounds for i=1:nsmp
 		abcsmp!(prm;rng=rng,prmrg=prmrg,prmvary=prmvary);	
 		ysol,_ = pdesolve(;prm=prm,flagprg=false); 
-		prm[:ℓerr][1] = ℓerr(ysol;prm=prm,yˢ=ODHyˢ,yᵛ=ODHyᵛ,yⁱ=ODHyⁱ,ram=ram);
+		try 
+			prm[:ℓerr][1] = ℓerr(ysol;prm=prm,yˢ=ODHyˢ,yᵛ=ODHyᵛ,yⁱ=ODHyⁱ,ram=ram);
+		catch
+			@warn "simulation failed owing to resolutions and tolerances at sample $i"
+		end
 		Snow = @view S[:,i];
 		wrtprm!(prm,vkeys,Snow);
 
