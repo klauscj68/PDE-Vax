@@ -140,21 +140,21 @@ function myfindfirst(tpts::VecVw,teval::Float64)
 	end
 
 	# Find the smallest interval of type (,] containing point.
-	idx = [1,ntpts];
+	a=1; b=ntpts;
 	flag_fd = false;
 
 	while !flag_fd
-		mid = ceil(Int64,.5*idx[1]+.5*idx[2]);
-		if mid == idx[2]
+		mid = ceil(Int64,.5*a+.5*b);
+		if mid == b
 			flag_fd = true;
 		elseif teval <= tpts[mid]
-			idx[2] = mid;
+			b = mid;
 		else
-			idx[1] = mid;
+			a = mid;
 		end
 	end
 
-	return idx[2]
+	return b
 end
 
 # myinterp
@@ -172,11 +172,8 @@ function myinterp(tpts::VecVw,ypts::VecVw,teval::Float64)
 		val = ypts[end];
 	else
 		pos = myfindfirst(tpts,teval);
-		t1,t2 = tpts[pos-1:pos];
-		s = (teval-t1)/(t2-t1);
-		v1 = ypts[pos-1];
-		v2 = ypts[pos];
-		val = v1+s*(v2-v1);
+		s = (teval-tpts[pos-1])/(tpts[pos]-tpts[pos-1]);
+		val = ypts[pos-1]+s*(ypts[pos]-ypts[pos-1]);
 	end
 
 	return val
