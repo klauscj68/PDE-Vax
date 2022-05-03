@@ -313,8 +313,21 @@ function pdesolve(;prm::DSymVFl=data(),
 	nls1x = deepcopy(nls);
 	
 	# Initalize memory allocations for error analysis
-	aerr = [0.0];
-	rerr = [0.0];
+	#  The errors look at error in the avg per age year/per day for susceptible, vax'd and inf	
+	#   Note: ngrp means number nodes w/in a tunit
+	yˢntunit = (prm[:yˢrg][2]-prm[:yˢrg][1])÷365 |> Int64; yˢngrp = nnd÷yˢntunit; 
+	yᵛntunit = (prm[:yᵛrg][2]-prm[:yᵛrg][1])÷1 |> Int64; yᵛngrp = nnd÷yᵛntunit;
+	yⁱntunit = (prm[:yⁱrg][2]-prm[:yⁱrg][1])÷1 |> Int64; yⁱngrp = nnd÷yⁱntunit;
+	
+	#aerr = Vector{Float64}(undef,nnd); rerr = Vector{Float64}(undef,nnd);
+	yˢaerr = Vector{Float64}(undef,yˢntunit); yˢrerr = Vector{Float64}(undef,yˢntunit);
+	yˢlow = Vector{Float64}(undef,yˢntunit); yˢhigh = Vector{Float64}(undef,yˢntunit);
+
+	yᵛaerr = Vector{Float64}(undef,yᵛntunit); yᵛrerr = Vector{Float64}(undef,yᵛntunit);
+	yᵛlow = Vector{Float64}(undef,yᵛntunit); yᵛhigh = Vector{Float64}(undef,yᵛntunit);
+
+	yⁱaerr = Vector{Float64}(undef,yⁱntunit); yⁱrerr = Vector{Float64}(undef,yⁱntunit);
+	yⁱlow = Vector{Float64}(undef,yⁱntunit); yⁱhigh = Vector{Float64}(undef,yⁱntunit);
 
 	# Store solution in ysol vector
 	ysol[1] = sol0 |> (x->srefine(nndsmp,x));
@@ -346,33 +359,51 @@ function pdesolve(;prm::DSymVFl=data(),
 				break
 			end
 
-			∫line!(sol.yˢ); ∫line!(sol.yᵛ); ∫line!(sol.yⁱ);
-			∫line!(sol2x.yˢ); ∫line!(sol2x.yᵛ); ∫line!(sol2x.yⁱ);
+			#∫line!(sol.yˢ); ∫line!(sol.yᵛ); ∫line!(sol.yⁱ);
+			#∫line!(sol2x.yˢ); ∫line!(sol2x.yᵛ); ∫line!(sol2x.yⁱ);
 			# compute errors and adapt step if accuracy not sufficient
-			aerr[1] = abs( sol.yˢ.∫yds[1]-sol2x.yˢ.∫yds[1] );
-			rerr[1] = aerr[1]/sol2x.yˢ.∫yds[1];
-			
-			if !myerrtst(aerr,rerr;prm=prm)
+			myerrs!( (prm[:yˢrg][2]-prm[:yˢrg][1])*sol.yˢ.ys,
+				 (prm[:yˢrg][2]-prm[:yˢrg][1])*sol2x.yˢ.ys,
+				 yˢlow,yˢhigh;
+				 rerr=yˢrerr,aerr=yˢaerr,
+				 ngrp=yˢngrp,ntunit=yˢntunit );
+			aerr = abs(sol.yˢ.ys[1]-sol2x.yˢ.ys[1]);
+			rerr = abs(sol.yˢ.ys[1]-sol2x.yˢ.ys[1])/abs(sol2x.yˢ.ys[1]);
+			aerr *= (prm[:yˢrg][2]-prm[:yˢrg][1]);
+			if (!myerrtst(yˢaerr,yˢrerr;prm=prm))||( aerr>prm[:atol][1]&&rerr>prm[:rtol][1] )
 				Δt*=0.5;
 				continue
 			end
 
-			aerr[1] = abs( sol.yᵛ.∫yds[1]-sol2x.yᵛ.∫yds[1] );
-			rerr[1] = aerr[1]/sol2x.yᵛ.∫yds[1];
-			if !myerrtst(aerr,rerr;prm=prm)
+			myerrs!( (prm[:yᵛrg][2]-prm[:yᵛrg][1])*sol.yᵛ.ys,
+				 (prm[:yᵛrg][2]-prm[:yᵛrg][1])*sol2x.yᵛ.ys,
+				 yᵛlow,yᵛhigh;
+				 rerr=yᵛrerr,aerr=yᵛaerr,
+				 ngrp=yᵛngrp,ntunit=yᵛntunit );
+			aerr = abs(sol.yᵛ.ys[1]-sol2x.yᵛ.ys[1]);
+			rerr = abs(sol.yᵛ.ys[1]-sol2x.yᵛ.ys[1])/abs(sol2x.yᵛ.ys[1]);
+			aerr *= (prm[:yᵛrg][2]-prm[:yᵛrg][1]);
+			if (!myerrtst(yᵛaerr,yᵛrerr;prm=prm))||( aerr>prm[:atol][1]&&rerr>prm[:rtol][1] )
 				Δt*=0.5;
 				continue
 			end
 			
-			aerr[1] = abs( sol.yⁱ.∫yds[1]-sol2x.yⁱ.∫yds[1] );
-			rerr[1] = aerr[1]/sol2x.yⁱ.∫yds[1];
-			if !myerrtst(aerr,rerr;prm=prm)
+			myerrs!( (prm[:yⁱrg][2]-prm[:yⁱrg][1])*sol.yⁱ.ys,
+				 (prm[:yⁱrg][2]-prm[:yⁱrg][1])*sol2x.yⁱ.ys,
+				 yⁱlow,yⁱhigh;
+				 rerr=yⁱrerr,aerr=yⁱaerr,
+				 ngrp=yⁱngrp,ntunit=yⁱntunit );
+			aerr = abs(sol.yⁱ.ys[1]-sol2x.yⁱ.ys[1]);
+			rerr = abs(sol.yⁱ.ys[1]-sol2x.yⁱ.ys[1])/abs(sol2x.yⁱ.ys[1]);
+			aerr *= (prm[:yⁱrg][2]-prm[:yⁱrg][1]);
+			if (!myerrtst(yⁱaerr,yⁱrerr;prm=prm))||( aerr>prm[:atol][1]&&rerr>prm[:rtol][1] )
 				Δt*=0.5;
 				continue
 			end
 
-			myerrs!(yʳ,yʳ2x;aerr=aerr,rerr=rerr);
-			if (aerr[1]>prm[:atol][1])&&(rerr[1]>prm[:rtol][1])
+			aerr = abs(yʳ[1]-yʳ2x[1]);
+			rerr = aerr/abs(yʳ2x[1]);
+			if (aerr>prm[:atol][1])&&(rerr>prm[:rtol][1])
 				Δt*=0.5;
 				continue
 			end
@@ -396,8 +427,9 @@ function pdesolve(;prm::DSymVFl=data(),
 		sol0 = deepcopy(sol2x); nonlocals!(sol0;temp=nls,prm=prm); yʳ0[:] = deepcopy(yʳ2x);
 		Δt *= 2;
 
-		if ( (sol0.yˢ.∫yds[1]<-1)||(sol0.yᵛ.∫yds[1]<-1)||(sol0.yⁱ.∫yds[1]<-1)||
-		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] > 2+prm[:ρ][1]) )
+		if ( (sol0.yˢ.∫yds[1]<-0.1)||(sol0.yᵛ.∫yds[1]<-0.1)||(sol0.yⁱ.∫yds[1]<-0.1)||
+		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] > 1.1+prm[:ρ][1])||
+		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] < 0.9+prm[:ρ][1]) ) 
 			@warn "simulation failed at these tolerances"
 			break
 		end

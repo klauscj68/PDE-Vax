@@ -171,6 +171,7 @@ function abcrun(nsmp::Int64;
 		dftemp = CSV.read("ABCsmp.csv",DataFrame,header=false);
 		vkeys = string.(dftemp[:,1]);
 		prm,_ = rdprm(dftemp[!,end],vkeys);
+		rng = myloadrng();
 	end
 	prmrg,prmvary = abcdata();
 	S = Matrix{Float64}(undef,length(vkeys),nsmp)
@@ -181,19 +182,24 @@ function abcrun(nsmp::Int64;
 	println("progress through abc sampling: 0.0/1.0 ...")
 	prg = 0.0;
 	@inbounds for i=1:nsmp
-		abcsmp!(prm;rng=rng,prmrg=prmrg,prmvary=prmvary);	
+		abcsmp!(prm;rng=rng,prmrg=prmrg,prmvary=prmvary);
+		
+		Snow = @view S[:,i];
+		wrtprm!(prm,vkeys,Snow);
+		CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
+		
 		ysol,_ = pdesolve(;prm=prm,flagprg=false); 
 		try 
 			prm[:ℓerr][1] = ℓerr(ysol;prm=prm,yˢ=ODHyˢ,yᵛ=ODHyᵛ,yⁱ=ODHyⁱ,ram=ram);
 		catch
 			@warn "simulation failed owing to resolutions and tolerances at sample $i"
 		end
-		Snow = @view S[:,i];
+		
 		wrtprm!(prm,vkeys,Snow);
-
+		CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
 		# Partially save progress and output progess through independent samples and save rng
 		while i/nsmp >= prg + δprg
-			CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
+			#CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
 			mysaverng(rng);
 			prg += δprg;
 			println("progress through abc sampling: $prg/1.0 ...");
@@ -206,16 +212,4 @@ function abcrun(nsmp::Int64;
 	mysaverng(rng);
 
 	return
-end
-
-function advrng!(nsmp::Int64;
-		 prm::DSymVFl=data(),
-		 prmrg::DSymVFl=mcdata()[1],
-		 prmvary::DSymBool=mcdata()[2],
-		 rng::MersenneTwister=MersenneTwister())
-	@inbounds for i=1:nsmp
-		abcsmp!(prm;prmrg=prmrg,prmvary=prmvary,rng=rng);
-	end
-
-	mysaverng(rng);
 end

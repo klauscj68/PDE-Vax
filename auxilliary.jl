@@ -1,4 +1,4 @@
-using Plots,Measures,Random,CSV,DataFrames
+using Plots,Measures,Random,CSV,DataFrames,Statistics
 gr();
 ## Suite of ancillary routines for solving the vaccination PDE system
 # Coordinate system for numerical routines are (s,t)
@@ -356,19 +356,33 @@ end
 #%% Error analysis
 """
 vlow and vhigh are resp meant to be the low and high resolution euler step
-solutions. It uses vhigh to compute the relative error
+solutions. It uses vhigh to compute the relative error. vgrp's are in place
+arguments for storing the solution mean values over their base unit time. 
+Routine compute the pointwise average absolute and relative errors in the
+solution relative the time units that were specified to them.
 """
-function myerrs!(vlow::VecVw,vhigh::VecVw;
-		rerr::VecVw=Vector{Float64}(undef,length(vlow)),
-		aerr::VecVw=Vector{Float64}(undef,length(vlow)))
-	aerr[:] = abs.(vhigh-vlow);
-	rerr[:] = aerr./abs.(vhigh);
-end
-function myerrs(vlw::VecVw,vhigh::VecVw)
-	rerr=Vector{Float64}(undef,length(vlow));
-	aerr=Vector{Float64}(undef,length(vlow));
+function myerrs!(vlow::VecVw,vhigh::VecVw,
+		 vgrplow::VecVw,vgrphigh::VecVw;
+		 rerr::VecVw=Vector{Float64}(undef,length(vgrplow)),
+		 aerr::VecVw=Vector{Float64}(undef,length(vgrplow)),
+		 ngrp::Int64=length(vgrplow),
+		 ntunit::Int64=(length(vlow)÷ngrp) )	
 
-	myerrs!(vlow,vhigh;rerr=rerr,aerr=aerr);
+	vwlow = @view vlow[1:ngrp*ntunit]; vwhigh = @view vhigh[1:ngrp*ntunit];
+	rshplow = reshape(vwlow,ngrp,ntunit); rshphigh = reshape(vwhigh,ngrp,ntunit);	
+	vgrplow[:] = mean(rshplow,dims=1); vgrphigh[:] = mean(rshphigh,dims=1);
+
+	aerr[:] = abs.(vgrphigh-vgrplow);
+	rerr[:] = aerr./abs.(vgrphigh);
+end
+function myerrs(vlow::VecVw,vhigh::VecVw,
+		 vgrplow::VecVw,vgrphigh::VecVw)
+	rerr=Vector{Float64}(undef,length(vgrplow));
+	aerr=Vector{Float64}(undef,length(vgrplow));
+
+	myerrs!(vlow,vhigh,
+		vgrplow,vgrphigh;
+		rerr=rerr,aerr=aerr);
 
 	return aerr,rerr
 end
@@ -498,71 +512,101 @@ end
 # Routines to save a random number generator
 #%% mysaverng
 """
-Given a MersenneTwister rng, save its internal states to csv files which may be reloaded for
-restarting future runs.
+Given a MersenneTwister rng, save its internal states to csv file which may be reloaded for
+restarting future runs. Note that rng seed is UInt32 but the CSV will save as Int64. Will
+need to convert when reloading.
 """
-function mysaverng(rng::MersenneTwister)
-	# Loop over fieldnames of rng and save to their own csv's
-	#  One of the fields was a structure of its own and needed slightly different handling
-	for key in fieldnames(typeof(rng))
-		if key != :state
-			df = DataFrame(string(key)=>getfield(rng,key));
-		else
-			ram = getfield(rng,key);
-			df = DataFrame(string(key)=>ram.val);
-		end
-		CSV.write("RNG"*string(key)*".csv",df);
-	end
-	return true
+function mysaverng(rng::MersenneTwister;fname::String="RNG")
+	# seed is a Vector{UInt32}
+	dftemp = DataFrame("seed"=>rng.seed);
+	CSV.write(fname*"seed.csv",dftemp);
+
+	# state is a Random.DSFMT.DSFMT_state which stores a Vector{Int32} at :val
+	dftemp = DataFrame("state"=>rng.state.val);
+	CSV.write(fname*"state.csv",dftemp);
+
+	# vals is a Vector{Float64}
+	dftemp = DataFrame("vals"=>rng.vals);
+	CSV.write(fname*"vals.csv",dftemp);
+
+	# ints is a Vector{UInt128}
+	dftemp = DataFrame("ints"=>rng.ints);
+	CSV.write(fname*"ints.csv",dftemp);
+
+	# idxF is a Int64
+	dftemp = DataFrame("idxF"=>[rng.idxF]);
+	CSV.write(fname*"idxF.csv",dftemp);
+
+	# idxI is a Int64
+	dftemp = DataFrame("idxI"=>[rng.idxI]);
+	CSV.write(fname*"idxI.csv",dftemp);
+
+	# adv is a Int64
+	dftemp = DataFrame("adv"=>[rng.adv]);
+	CSV.write(fname*"adv.csv",dftemp);
+
+	# adv_jump is a BigInt
+	dftemp = DataFrame("adv_jump"=>[rng.adv_jump]);
+	CSV.write(fname*"adv_jump.csv",dftemp);
+
+	# adv_vals is a Int64
+	dftemp = DataFrame("adv_vals"=>[rng.adv_vals]);
+	CSV.write(fname*"adv_vals.csv",dftemp);
+
+	# adv_ints is a Int64
+	dftemp = DataFrame("adv_ints"=>[rng.adv_ints]);
+	CSV.write(fname*"adv_ints.csv",dftemp);
+
+	return
 end
 
 #%% myloadrng
 """
 Given a MersenneTwister saved into csv's like my mysaverng function, restore a rng with these settings.
-fname is the prefix that the CSV files begin with.
+fname is the prefix that the CSV files begin with. Note that rng seed is UInt32 but the CSV will save 
+as Int64. Will need to convert when reloading.
 """
-function myloadrng(fname::String="RNG")
-	fields = ["seed","state","vals","ints","idxF","idxI","adv","adv_jump","adv_vals","adv_ints"];
-	
-	# Seed
-	DF = CSV.read(fname*"seed.csv",DataFrame);
-	myseed = convert(Vector{UInt32},DF[!,1]);
+function myloadrng(;fname::String="RNG")
+	# seed is a Vector{UInt32}
+	dftemp = CSV.read(fname*"seed.csv",DataFrame);
+	myseed = dftemp[!,1] |> (x->convert(Vector{UInt32},x));
 
-	# State
-	DF = CSV.read(fname*"state.csv",DataFrame);
-	mystate = Random.DSFMT.DSFMT_state(convert(Vector{Int32},DF[!,1]));
+	# state is a Random.DSFMT.DSFMT_state which stores a Vector{Int32} at :val
+	dftemp = CSV.read(fname*"state.csv",DataFrame);
+	myvstate = dftemp[!,1] |> (x->convert(Vector{Int32},x));
+	mystate = Random.DSFMT.DSFMT_state(myvstate);
 
-	# vals
-	DF = CSV.read(fname*"vals.csv",DataFrame);
-	myvals = convert(Vector{Float64},DF[!,1]);
+	# vals is a Vector{Float64}
+	dftemp = CSV.read(fname*"vals.csv",DataFrame);
+	myvals = dftemp[!,1] |> (x->convert(Vector{Float64},x));
 
-	# ints
-	DF = CSV.read(fname*"ints.csv",DataFrame);
-	myints = convert(Vector{UInt128},DF[!,1]);
+	# ints is a Vector{UInt128}
+	dftemp = CSV.read(fname*"ints.csv",DataFrame);
+	myints = dftemp[!,1] |> (x->convert(Vector{UInt128},x));
 
-	# idxF
-	DF = CSV.read(fname*"idxF.csv",DataFrame);
-	myidxF = convert(Int64,DF[!,1][1]);
+	# idxF is a Int64
+	dftemp = CSV.read(fname*"idxF.csv",DataFrame);
+	myidxF = dftemp[1,1] |> (x->convert(Int64,x));
 
-	# idxI
-        DF = CSV.read(fname*"idxI.csv",DataFrame);
-	myidxI = convert(Int64,DF[!,1][1]);
+	# idxI is a Int64
+	dftemp = CSV.read(fname*"idxI.csv",DataFrame);
+	myidxI = dftemp[1,1] |> (x->convert(Int64,x));
 
-	# adv
-	DF = CSV.read(fname*"adv.csv",DataFrame);
-	myadv = convert(Int64,DF[!,1][1]);
+	# adv is a Int64
+	dftemp = CSV.read(fname*"adv.csv",DataFrame);
+	myadv = dftemp[1,1] |> (x->convert(Int64,x));
 
-	# adv_jump
-	DF = CSV.read(fname*"adv_jump.csv",DataFrame);
-	myadv_jump = convert(BigInt,DF[!,1][1]);
+	# adv_jump is a BigInt
+	dftemp = CSV.read(fname*"adv_jump.csv",DataFrame);
+	myadv_jump = dftemp[1,1] |> (x->convert(BigInt,x));
 
-	# adv_vals
-	DF = CSV.read(fname*"adv_vals.csv",DataFrame);
-	myadv_vals = convert(Int64,DF[!,1][1]);
+	# adv_vals is a Int64
+	dftemp = CSV.read(fname*"adv_vals.csv",DataFrame);
+	myadv_vals = dftemp[1,1] |> (x->convert(Int64,x));
 
-	# adv_ints
-	DF = CSV.read(fname*"adv_ints.csv",DataFrame,type=Int64);
-	myadv_ints = convert(Int64,DF[!,1][1]);
+	# adv_ints is a Int64
+	dftemp = CSV.read(fname*"adv_ints.csv",DataFrame);
+	myadv_ints = dftemp[1,1] |> (x->convert(Int64,x));
 
 	return MersenneTwister(myseed,mystate,myvals,myints,myidxF,myidxI,myadv,myadv_jump,myadv_vals,myadv_ints)
 end
