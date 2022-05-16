@@ -61,7 +61,7 @@ function abcsmp!(prm::DSymVFl;
 
 		# Check if recovery is less than 3 weeks
 		γ = Weibull(prm[:γα][1],prm[:γθ][1]);
-		γqt = quantile(γ,0.99);
+		γqt = quantile(γ,0.999);
 		if γqt > 21.0
 			continue
 		end
@@ -169,7 +169,7 @@ function abcrun(nsmp::Int64;
 		prm,vkeys,V = wrtprm();
 	else
 		dftemp = CSV.read("ABCsmp.csv",DataFrame,header=false);
-		vkeys = string.(dftemp[:,1]);
+		vkeys = Symbol.(dftemp[:,1]);
 		prm,_ = rdprm(dftemp[!,end],vkeys);
 		rng = myloadrng();
 	end

@@ -20,39 +20,39 @@ function data()
 	prm[:yᵛrg] = [NaN,NaN];
 	prm[:yⁱrg] = [NaN,NaN];
 
-	prm[:Trg] = [0.0,138.0];
+	prm[:Trg] = [0.0,65.0];
 
 	# α parameters
 	prm[:αL] = [14.0];
-	prm[:αeff] = [0.708582];
+	prm[:αeff] = [0.940723];
 
 	# β parameters
 	#  mean of 3.1
-	prm[:βθ]=[14.0016];
-	prm[:βα]=[12.8731];
+	prm[:βθ]=[13.5087];
+	prm[:βα]=[18.6117];
 
 	# γ parameters
 	#  mean of 7.1
-	prm[:γθ]=[17.6226];
-	prm[:γα]=[3.58408];
+	prm[:γθ]=[14.5368];
+	prm[:γα]=[7.96798];
 
 	# λ parameters
 	prm[:λ]=[1.5];
 
 	# mass of t₀ infected
-	prm[:ρ] = [0.0108126];
+	prm[:ρ] = [0.0496982];
 
 	# spatial discretization
-	prm[:nnd] = [6000.0];
+	prm[:nnd] = [2500.0];
 
 	# ode discretization
-	prm[:atol]=[1e-8];
-	prm[:rtol]=[1e-5];
-	prm[:Δtmin]=[5e-5];
+	prm[:atol]=[1e-5];
+	prm[:rtol]=[1e-3];
+	prm[:Δtmin]=[1e-5];
 
 	# parameters for how often and the res by which sol is stored
 	prm[:dwnsmp]=[1.0];
-	prm[:nndsmp]=[6000.0];
+	prm[:nndsmp]=[2500.0];
 
 	# normalization constants for fˢ,fⁱ. data! will mutate to correct
 	prm[:fˢη]=[1.0];
@@ -79,8 +79,8 @@ function data!(prm::DSymVFl)
 	prm[:yⁱrg][1] = prm[:yⁱrg₀][1];
 
 	prm[:yˢrg][2] = prm[:yˢrg₀][2] + prm[:Trg][2];
-	prm[:yᵛrg][2] = prm[:yᵛrg₀][2] + prm[:Trg][2];
-	prm[:yⁱrg][2] = prm[:yⁱrg₀][2] + prm[:Trg][2];
+	prm[:yᵛrg][2] = 22.0; #prm[:yᵛrg₀][2] + prm[:Trg][2];
+	prm[:yⁱrg][2] = 22.0; #prm[:yⁱrg₀][2] + prm[:Trg][2];
 
 	# Compute the normalization constants for initial conditions
 	#  First reset to 1 so get correct new factor
@@ -133,42 +133,78 @@ function ∂vα(s::Float64,t::Float64;prm::DSymVFl=data())
 	return prm[:αeff][1]*∂Ηδρ(s-7.0;δ=7.0,ρ=1.0)
 end
 
-function β(s::Float64,t::Float64;prm::DSymVFl=data())
+function β₀(s::Float64,t::Float64;prm::DSymVFl=data())
 	val = prm[:βα][1]/prm[:βθ][1]*(s/prm[:βθ][1])^(prm[:βα][1]-1);
 
 	return val
 end
-function ∂vβ(s::Float64,t::Float64;prm::DSymVFl=data())
-	return prm[:βα][1]/prm[:βθ][1]*(s/prm[:βθ][1])^(prm[:βα][1]-2.)*(prm[:βα][1]-1.)*1/prm[:βθ][1]
+function β(s::Float64,t::Float64;prm::DSymVFl=data(),
+		                 M::Float64=50.0)
+	sₘ = prm[:βθ][1]*( prm[:βθ][1]/prm[:βα][1]*M )^( 1/(prm[:βα][1]-1) );
+	val = β₀(s,t;prm=prm);
 
+	val = val*Ηδρ(sₘ-s)+M*Ηδρ(s-sₘ);
+	return val
+end
+function ∂vβ₀(s::Float64,t::Float64;prm::DSymVFl=data())
+	val = prm[:βα][1]/prm[:βθ][1]*(s/prm[:βθ][1])^(prm[:βα][1]-2.)*(prm[:βα][1]-1.)*1/prm[:βθ][1];
+
+	return val
+end
+function ∂vβ(s::Float64,t::Float64;prm::DSymVFl=data(),
+	                           M::Float64=50.0)	
+	sₘ = prm[:βθ][1]*( prm[:βθ][1]/prm[:βα][1]*M )^( 1/(prm[:βα][1]-1) );
+	val = ∂vβ₀(s,t;prm=prm);
+
+	val = val*Ηδρ(sₘ-s)-β₀(s,t;prm=prm)*∂Ηδρ(sₘ-s)+M*∂Ηδρ(s-sₘ)
+	return val
 end
 
-function γ(s::Float64,t::Float64;prm::DSymVFl=data())
+function γ₀(s::Float64,t::Float64;prm::DSymVFl=data())
 	val = prm[:γα][1]/prm[:γθ][1]*(s/prm[:γθ][1])^(prm[:γα][1]-1);
 
 	return val
 end
-function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data())
-	return prm[:γα][1]/prm[:γθ][1]*(s/prm[:γθ][1])^(prm[:γα][1]-2.)*(prm[:γα][1]-1.)*1/prm[:γθ][1]
+function γ(s::Float64,t::Float64;prm::DSymVFl=data(),
+		                 M::Float64=50.0)
+	sₘ = prm[:γθ][1]*( prm[:γθ][1]/prm[:γα][1]*M )^( 1/(prm[:γα][1]-1) );
+	val = γ₀(s,t;prm=prm);
+
+	val = val*Ηδρ(sₘ-s)+M*Ηδρ(s-sₘ);
+	return val
 end
+function ∂vγ₀(s::Float64,t::Float64;prm::DSymVFl=data())
+	val = prm[:γα][1]/prm[:γθ][1]*(s/prm[:γθ][1])^(prm[:γα][1]-2.)*(prm[:γα][1]-1.)*1/prm[:γθ][1];
+
+	return val
+end
+function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data(),
+	                           M::Float64=50.0)
+	sₘ = prm[:γθ][1]*( prm[:γθ][1]/prm[:γα][1]*M )^( 1/(prm[:γα][1]-1) );
+	val = ∂vγ₀(s,t;prm=prm);
+
+	val = val*Ηδρ(sₘ-s)-γ₀(s,t;prm=prm)*∂Ηδρ(sₘ-s)+M*∂Ηδρ(s-sₘ)
+	return val
+end
+
 function λ(s::Float64,t::Float64;prm::DSymVFl=data())
 	syr = s/365;
-	val = ζδρ(syr,20.0,59.0)*( 0.002*mynrm(t,105.0,10.0)+0.002*mynrm(t,140.0,7.5) );
-	val += ζδρ(syr,60.0,69.0)*( 0.006*mynrm(t,130.0,12.5) );
-	val += ζδρ(syr,70.0,100.0)*( 0.013*mynrm(t,130.0,12.5) );
+	val = ζδρ(syr,20.0,59.0)*( 0.002*mynrm(t,60.0,10.0)+0.002*mynrm(t,95.0,7.5) );
+	val += ζδρ(syr,60.0,69.0)*( 0.006*mynrm(t,85.0,12.5) );
+	val += ζδρ(syr,70.0,95.0)*( 0.013*mynrm(t,85.0,12.5) );
 
 	return val
 end
 function ∂vλ(s::Float64,t::Float64;prm::DSymVFl=data())
 	syr = s/365; η=1/365;
-	val = η*∂ζδρ(syr,20.0,59.0)*( 0.002*mynrm(t,105.0,10.0)+0.002*mynrm(t,140.0,7.5) );
-	val += ζδρ(syr,20.0,59.0)*( 0.002*∂mynrm(t,105.0,10.0)+0.002*∂mynrm(t,140.0,7.5) );
+	val = η*∂ζδρ(syr,20.0,59.0)*( 0.002*mynrm(t,60.0,10.0)+0.002*mynrm(t,95.0,7.5) );
+	val += ζδρ(syr,20.0,59.0)*( 0.002*∂mynrm(t,60.0,10.0)+0.002*∂mynrm(t,95.0,7.5) );
 
-	val += η*∂ζδρ(syr,60.0,69.0)*( 0.006*mynrm(t,130.0,12.5) );
-	val += ζδρ(syr,60.0,69.0)*( 0.006*∂mynrm(t,130.0,12.5) );
+	val += η*∂ζδρ(syr,60.0,69.0)*( 0.006*mynrm(t,85.0,12.5) );
+	val += ζδρ(syr,60.0,69.0)*( 0.006*∂mynrm(t,85.0,12.5) );
 	
-	val += η*∂ζδρ(syr,70.0,100.0)*( 0.013*mynrm(t,130.0,12.5) );
-	val += ζδρ(syr,70.0,100.0)*( 0.013*∂mynrm(t,130.0,12.5) );
+	val += η*∂ζδρ(syr,70.0,95.0)*( 0.013*mynrm(t,85.0,12.5) );
+	val += ζδρ(syr,70.0,95.0)*( 0.013*∂mynrm(t,85.0,12.5) );
 
 	return val
 end

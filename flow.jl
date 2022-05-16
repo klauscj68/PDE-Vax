@@ -142,20 +142,25 @@ function flow!(s::Float64,t::Float64,
 	       Y::Solℓvℓ;
 	       prm::DSymVFl=data(),
 	       nls::DSymYℓvℓ=nonlocals(Y;prm=prm),
-	       temp::VecVw=Vector{Float64}(undef,3))
+	       temp::VecVw=Vector{Float64}(undef,3),
+	       comp::Int64=1)
 	# decimal value is 1/√2
-	temp[1] = -0.7071067811865475*(λ(s,t;prm=prm)+nls[:∫βyⁱ].∫yds[1])*eval(Y.yˢ,s);
-	αval = α(s,t;prm=prm);
-	temp[2] = -0.7071067811865475*(αval+(1-αval)*nls[:∫βyⁱ].∫yds[1])*eval(Y.yᵛ,s);
-	temp[3] = -0.7071067811865475*γ(s,t;prm=prm)*eval(Y.yⁱ,s);
-
+	if comp==1
+		temp[1] = -0.7071067811865475*(λ(s,t;prm=prm)+nls[:∫βyⁱ].∫yds[1])*eval(Y.yˢ,s);
+	elseif comp==2
+		αval = α(s,t;prm=prm);
+		temp[2] = -0.7071067811865475*(αval+(1-αval)*nls[:∫βyⁱ].∫yds[1])*eval(Y.yᵛ,s);
+	elseif comp==3
+		temp[3] = -0.7071067811865475*γ(s,t;prm=prm)*eval(Y.yⁱ,s);
+	end
 end
 function flow(s::Float64,t::Float64,
               Y::Solℓvℓ;
               prm::DSymVFl=data(),
-              nls::DSymYℓvℓ=nonlocals(Y;prm=prm))
+              nls::DSymYℓvℓ=nonlocals(Y;prm=prm),
+	      comp::Int64=1)
 	temp = Vector{Float64}(undef,3);
-	flow!(s,t,Y;prm=prm,nls=nls,temp=temp);
+	flow!(s,t,Y;prm=prm,nls=nls,temp=temp,comp=comp);
 	return temp
 end
 
@@ -231,13 +236,13 @@ function euler!(Δt::Float64,Y::Solℓvℓ,yʳ::VecVw;
 	#   accomodate sols w/diff meshes away from s=0 axis
 	#   first index is yˢ,yᵛ,yⁱ and second index is node.
 	#   assumed all sols have same number of nodes
-	gen=[1,1];
+	gen=[0,2];
 	@inbounds for i=1:3*(Y.yˢ.tlvl.nnd-1)
-		if gen[2]!=Y.yˢ.tlvl.nnd
-			gen[2]+=1;
+		if gen[1]!=3
+			gen[1]+=1; 
 		else
-			gen[1]+=1; gen[2]=2;
-		end
+			gen[1]=1; gen[2]+=1;
+		end	
 		pos=gen[2];comp=gen[1];
 		ylvl = ( comp==1 ? Y.yˢ : ( comp==2 ? Y.yᵛ : Y.yⁱ ) );
 		templvl = ( comp==1 ? temp.yˢ : ( comp==2 ? temp.yᵛ : temp.yⁱ ) );
@@ -246,7 +251,7 @@ function euler!(Δt::Float64,Y::Solℓvℓ,yʳ::VecVw;
 		δχ = hyper∂!(Δt,ylvl.tlvl,ylvl.tlvl.snds[pos],temp.t₀[1];temp=∂temp);
 		
 		# Compute the flow field at the originating point
-		flow!(∂temp[1],∂temp[2],Y;prm=prm,nls=nls,temp=vtemp);
+		flow!(∂temp[1],∂temp[2],Y;prm=prm,nls=nls,temp=vtemp,comp=comp);
 
 		# Compute the new solution value
 		if ∂temp[1]>0.0
@@ -310,7 +315,7 @@ function pdesolve(;prm::DSymVFl=data(),
 	∂vtemp = Vector{Float64}(undef,3);
 	yʳtemp = Vector{Float64}(undef,1);
 	nls = nonlocalsinit!(sol0;prm=prm);
-	nls1x = deepcopy(nls);
+	nls1x = deepcopy(nls); nls2x = deepcopy(nls);
 	
 	# Initalize memory allocations for error analysis
 	#  The errors look at error in the avg per age year/per day for susceptible, vax'd and inf	
@@ -354,6 +359,8 @@ function pdesolve(;prm::DSymVFl=data(),
 			       temp=sol2x,∂temp=∂temp,vtemp=vtemp,∂vtemp=∂vtemp,yʳtemp=yʳ2x,
 			       prm=prm,nls=nls1x);
 
+			nonlocals!(sol2x;temp=nls2x,prm=prm);
+
 			if Δt<=prm[:Δtmin][1]
 				nΔtfail += 1;
 				break
@@ -362,13 +369,106 @@ function pdesolve(;prm::DSymVFl=data(),
 			#∫line!(sol.yˢ); ∫line!(sol.yᵛ); ∫line!(sol.yⁱ);
 			#∫line!(sol2x.yˢ); ∫line!(sol2x.yᵛ); ∫line!(sol2x.yⁱ);
 			# compute errors and adapt step if accuracy not sufficient
+			#  nonlocal errors
+			aerr = abs(nls2x[:∫∂vλyˢ].∫yds[1]-nls[:∫∂vλyˢ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫∂vλyˢ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫λyˢ].∫yds[1]-nls[:∫λyˢ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫λyˢ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫λ²yˢ].∫yds[1]-nls[:∫λ²yˢ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫λ²yˢ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫yˢ].∫yds[1]-nls[:∫yˢ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫yˢ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫∂vαyᵛ].∫yds[1]-nls[:∫∂vαyᵛ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫∂vαyᵛ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫Imααyᵛ].∫yds[1]-nls[:∫Imααyᵛ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫Imααyᵛ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫Imαyᵛ].∫yds[1]-nls[:∫Imαyᵛ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫Imαyᵛ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫Imα²yᵛ].∫yds[1]-nls[:∫Imα²yᵛ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫Imα²yᵛ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫αyᵛ].∫yds[1]-nls[:∫αyᵛ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫αyᵛ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫βyⁱ].∫yds[1]-nls[:∫βyⁱ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫βyⁱ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫∂vβyⁱ].∫yds[1]-nls[:∫∂vβyⁱ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫∂vβyⁱ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫βγyⁱ].∫yds[1]-nls[:∫βγyⁱ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫βγyⁱ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			aerr = abs(nls2x[:∫γyⁱ].∫yds[1]-nls[:∫γyⁱ].∫yds[1]);
+			rerr = aerr/abs(nls2x[:∫γyⁱ].∫yds[1]);
+			if (aerr>prm[:atol][1]&&rerr>prm[:rtol][1])
+				Δt*=0.5;
+				continue
+			end
+
+			#  solution cohort nodal errors
 			myerrs!( (prm[:yˢrg][2]-prm[:yˢrg][1])*sol.yˢ.ys,
 				 (prm[:yˢrg][2]-prm[:yˢrg][1])*sol2x.yˢ.ys,
 				 yˢlow,yˢhigh;
 				 rerr=yˢrerr,aerr=yˢaerr,
 				 ngrp=yˢngrp,ntunit=yˢntunit );
 			aerr = abs(sol.yˢ.ys[1]-sol2x.yˢ.ys[1]);
-			rerr = abs(sol.yˢ.ys[1]-sol2x.yˢ.ys[1])/abs(sol2x.yˢ.ys[1]);
+			rerr = aerr/abs(sol2x.yˢ.ys[1]);
 			aerr *= (prm[:yˢrg][2]-prm[:yˢrg][1]);
 			if (!myerrtst(yˢaerr,yˢrerr;prm=prm))||( aerr>prm[:atol][1]&&rerr>prm[:rtol][1] )
 				Δt*=0.5;
@@ -381,7 +481,7 @@ function pdesolve(;prm::DSymVFl=data(),
 				 rerr=yᵛrerr,aerr=yᵛaerr,
 				 ngrp=yᵛngrp,ntunit=yᵛntunit );
 			aerr = abs(sol.yᵛ.ys[1]-sol2x.yᵛ.ys[1]);
-			rerr = abs(sol.yᵛ.ys[1]-sol2x.yᵛ.ys[1])/abs(sol2x.yᵛ.ys[1]);
+			rerr = aerr/abs(sol2x.yᵛ.ys[1]);
 			aerr *= (prm[:yᵛrg][2]-prm[:yᵛrg][1]);
 			if (!myerrtst(yᵛaerr,yᵛrerr;prm=prm))||( aerr>prm[:atol][1]&&rerr>prm[:rtol][1] )
 				Δt*=0.5;
@@ -394,7 +494,7 @@ function pdesolve(;prm::DSymVFl=data(),
 				 rerr=yⁱrerr,aerr=yⁱaerr,
 				 ngrp=yⁱngrp,ntunit=yⁱntunit );
 			aerr = abs(sol.yⁱ.ys[1]-sol2x.yⁱ.ys[1]);
-			rerr = abs(sol.yⁱ.ys[1]-sol2x.yⁱ.ys[1])/abs(sol2x.yⁱ.ys[1]);
+			rerr = aerr/abs(sol2x.yⁱ.ys[1]);
 			aerr *= (prm[:yⁱrg][2]-prm[:yⁱrg][1]);
 			if (!myerrtst(yⁱaerr,yⁱrerr;prm=prm))||( aerr>prm[:atol][1]&&rerr>prm[:rtol][1] )
 				Δt*=0.5;
@@ -409,6 +509,14 @@ function pdesolve(;prm::DSymVFl=data(),
 			end
 
 			flagfd = true;
+		end
+
+		# If any values were negative, set to 0. Since the true solution is nonnegative (confirm ∂-flow)
+		# this move should lower the local error at each iteration?
+		@inbounds for i=1:nnd
+			sol2x.yˢ.ys[i] = sol2x.yˢ.ys[i]>=0 ? sol2x.yˢ.ys[i] : 0.0;
+			sol2x.yᵛ.ys[i] = sol2x.yᵛ.ys[i]>=0 ? sol2x.yᵛ.ys[i] : 0.0;
+			sol2x.yⁱ.ys[i] = sol2x.yⁱ.ys[i]>=0 ? sol2x.yⁱ.ys[i] : 0.0;
 		end
 
 		# solution was accepted so prepare for next iteration

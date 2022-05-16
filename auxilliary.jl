@@ -128,9 +128,11 @@ DSymBool = Dict{Symbol,Bool};
 A binary search routine for finding the first time point greater than the query point
 among a given sequence of times. Writing because the findfirst routine is proving to
 be expensive in Julia. Routine assumes that tpts is ordered least to great. It returns 
-the endpoints when teval falls outside.
+the endpoints when teval falls outside. flagmth indicates whether to use the full binary
+routine (can be slow) or whether to use division on an unif grid (can be faster)
 """
-function myfindfirst(tpts::VecVw,teval::Float64)
+function myfindfirst(tpts::VecVw,teval::Float64;
+	             flagmth::String="div")
 	ntpts = length(tpts);
 	
 	if teval >= tpts[end];
@@ -140,21 +142,28 @@ function myfindfirst(tpts::VecVw,teval::Float64)
 	end
 
 	# Find the smallest interval of type (,] containing point.
-	a=1; b=ntpts;
-	flag_fd = false;
+	if flagmth == "div"
+		Δt = (tpts[2]-tpts[1]);
+		b = (teval-tpts[1])÷Δt + 2 |> Int64;
+		return b
 
-	while !flag_fd
-		mid = ceil(Int64,.5*a+.5*b);
-		if mid == b
-			flag_fd = true;
-		elseif teval <= tpts[mid]
-			b = mid;
-		else
-			a = mid;
+	elseif flagmth=="binary"
+		a=1; b=ntpts;
+		flag_fd = false;
+
+		while !flag_fd
+			mid = ceil(Int64,.5*a+.5*b);
+			if mid == b
+				flag_fd = true;
+			elseif teval <= tpts[mid]
+				b = mid;
+			else
+				a = mid;
+			end
 		end
-	end
 
-	return b
+		return b
+	end
 end
 
 # myinterp
@@ -507,6 +516,105 @@ function plotbd(S::Vector{Solℓvℓ};prm=data())
 	lay = @layout [a b];
 	plot(p1,p2,size=(800,400))
 
+end
+
+"""
+Plot the given equation coefficient with its various approximations
+"""
+function RecipesBase.plot(s::Symbol;prm::DSymVFl=data())
+	data!(prm);
+
+	if s==:α
+		nds = LinRange(prm[:yᵛrg][1],prm[:yᵛrg][2],prm[:nnd][1]|>Int64);
+		saxis = LinRange(prm[:yᵛrg][1],prm[:yᵛrg][2],10*prm[:nnd][1]|>Int64);
+
+		αnds = [α(s,0.0;prm=prm) for s in nds];
+		αaxis = [α(s,0.0;prm=prm) for s in saxis];
+
+		p₁ = plot(saxis,αaxis,labels="true",linewidth=3,title="α",xlabel="s",ylabel="value");
+		plot!(p₁,nds,αnds,labels="discrete",linewidth=3,linestyle=:dash);
+
+		∂αnds = [∂vα(s,0.0;prm=prm) for s in nds];
+		∂αaxis = [∂vα(s,0.0;prm=prm) for s in saxis];
+
+		p₂ = plot(saxis,∂αaxis,labels="true",linewidth=3,title="∂α",xlabel="s",ylabel="value");
+		plot!(p₂,nds,∂αnds,labels="discrete",linewidth=3,linestyle=:dash);
+
+		lay = @layout [a b];
+		plot(p₁,p₂,layout=lay)
+	elseif s==:β
+		nds = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],prm[:nnd][1]|>Int64);
+		saxis = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],10*prm[:nnd][1]|>Int64);
+
+		β₀nds = [β₀(s,0.0;prm=prm) for s in nds];
+		βnds = [β(s,0.0;prm=prm) for s in nds];
+		β₀axis = [β₀(s,0.0;prm=prm) for s in saxis];
+		βaxis = [β(s,0.0;prm=prm) for s in saxis];
+
+		p₁ = plot(saxis,[β₀axis,βaxis],labels=["orig cont" "cap cont"],linewidth=3,title="β",xlabel="s",ylabel="value");
+		plot!(p₁,nds,[β₀nds,βnds],labels=["orig discrete" "cap discrete"],linewidth=3,linestyle=:dash);
+
+		∂β₀nds = [∂vβ₀(s,0.0;prm=prm) for s in nds];
+		∂βnds = [∂vβ(s,0.0;prm=prm) for s in nds];
+		∂β₀axis = [∂vβ₀(s,0.0;prm=prm) for s in saxis];
+		∂βaxis = [∂vβ(s,0.0;prm=prm) for s in saxis];
+
+		p₂ = plot(saxis,[∂β₀axis,∂βaxis],labels=["orig cont" "cap cont"],linewidth=3,title="∂β",xlabel="s",ylabel="value");
+		plot!(p₂,nds,[∂β₀nds,∂βnds],labels=["orig discrete" "cap discrete"],linewidth=3,linestyle=:dash);
+
+		lay = @layout [a b];
+		plot(p₁,p₂,layout=lay)
+	elseif s==:γ
+		nds = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],prm[:nnd][1]|>Int64);
+		saxis = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],10*prm[:nnd][1]|>Int64);
+
+		γ₀nds = [γ₀(s,0.0;prm=prm) for s in nds];
+		γnds = [γ(s,0.0;prm=prm) for s in nds];
+		γ₀axis = [γ₀(s,0.0;prm=prm) for s in saxis];
+		γaxis = [γ(s,0.0;prm=prm) for s in saxis];
+
+		p₁ = plot(saxis,[γ₀axis,γaxis],labels=["orig cont" "cap cont"],linewidth=3,title="γ",xlabel="s",ylabel="value");
+		plot!(p₁,nds,[γ₀nds,γnds],labels=["orig discrete" "cap discrete"],linewidth=3,linestyle=:dash);
+
+		∂γ₀nds = [∂vγ₀(s,0.0;prm=prm) for s in nds];
+		∂γnds = [∂vγ(s,0.0;prm=prm) for s in nds];
+		∂γ₀axis = [∂vγ₀(s,0.0;prm=prm) for s in saxis];
+		∂γaxis = [∂vγ(s,0.0;prm=prm) for s in saxis];
+
+		p₂ = plot(saxis,[∂γ₀axis,∂γaxis],labels=["orig cont" "cap cont"],linewidth=3,title="∂γ",xlabel="s",ylabel="value");
+		plot!(p₂,nds,[∂γ₀nds,∂γnds],labels=["orig discrete" "cap discrete"],linewidth=3,linestyle=:dash);
+
+		lay = @layout [a b];
+		plot(p₁,p₂,layout=lay)
+	elseif s==:fˢ
+		nds = LinRange(prm[:yˢrg][1],prm[:yˢrg][2],prm[:nnd][1]|>Int64);
+		saxis = LinRange(prm[:yˢrg][1],prm[:yˢrg][2],10*prm[:nnd][1]|>Int64);
+
+		fˢnds = [fˢ(s;prm=prm) for s in nds];
+		fˢaxis = [fˢ(s;prm=prm) for s in saxis];
+
+		p₁ = plot(saxis,fˢaxis,labels="orig",linewidth=3,title="fˢ",xlabel="s",ylabel="value");
+		plot!(p₁,nds,fˢnds,labels="discrete",linewidth=3,linestyle=:dash);
+		plot(p₁)
+	elseif s==:fᵛ
+		nds = LinRange(prm[:yᵛrg][1],prm[:yᵛrg][2],prm[:nnd][1]|>Int64);
+		saxis = LinRange(prm[:yᵛrg][1],prm[:yᵛrg][2],10*prm[:nnd][1]|>Int64);
+
+		fᵛnds = [fᵛ(s;prm=prm) for s in nds];
+		fᵛaxis = [fᵛ(s;prm=prm) for s in saxis];
+
+		p₁ = plot(saxis,fᵛaxis,labels="orig",linewidth=3,title="fᵛ",xlabel="s",ylabel="value");
+		plot!(p₁,nds,fᵛnds,labels="discrete",linewidth=3,linestyle=:dash);
+	elseif s==:fⁱ
+		nds = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],prm[:nnd][1]|>Int64);
+		saxis = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],10*prm[:nnd][1]|>Int64);
+
+		fⁱnds = [fⁱ(s;prm=prm) for s in nds];
+		fⁱaxis = [fⁱ(s;prm=prm) for s in saxis];
+
+		p₁ = plot(saxis,fⁱaxis,labels="orig",linewidth=3,title="fⁱ",xlabel="s",ylabel="value");
+		plot!(p₁,nds,fⁱnds,labels="discrete",linewidth=3,linestyle=:dash);
+	end
 end
 
 # Routines to save a random number generator
