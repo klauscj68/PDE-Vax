@@ -171,10 +171,10 @@ function abcrun(fsmp::String;
 	select!(dfODH,["time","daily_confirm"]);
 
 	println("progress through abc sampling: 0.0/1.0 ...")
-	prg = 0.0;
+	prg = 0.0;flagsave=true;
 	@inbounds for i=(pos+1):ncol(dfS)	
 		prm = rdprm(dfS[!,i],vkeys)[1];
-		ysol,_ = pdesolve(;prm=prm,flagprg=false);
+		ysol,_ = pdesolve(;prm=prm,flagprg=true);
 
 		try 	
 			dfS[posℓ,i] = ℓerr(ysol;prm=prm,df=dfODH);
@@ -185,8 +185,12 @@ function abcrun(fsmp::String;
 		
 		CSV.write(fsmp,dfS,writeheader=false,append=false);
 		# Partially save progress and output progess
-		while i/nsmp >= prg + δprg
-			#CSV.write(fsmp,dfS,writeheader=false,append=false);	
+		flagsave = true;
+		while (i-1)/nsmp >= prg + δprg
+			if flagsave
+				CSV.write(fsmp,dfS,writeheader=false,append=false);
+			end
+			flagsave=false;
 			prg += δprg;
 			println("progress through abc sampling: $prg/1.0 ...");
 		end
