@@ -29,7 +29,7 @@ function data()
 	# β parameters
 	#  mean of 3.1
 	prm[:βθ]=[13.5087];
-	prm[:βα]=[18.6117];
+	prm[:βα]=[10.7391];
 
 	# γ parameters
 	#  mean of 7.1
@@ -139,7 +139,7 @@ function β₀(s::Float64,t::Float64;prm::DSymVFl=data())
 	return val
 end
 function β(s::Float64,t::Float64;prm::DSymVFl=data(),
-		                 M::Float64=50.0)
+		                 M::Float64=150.0)
 	sₘ = prm[:βθ][1]*( prm[:βθ][1]/prm[:βα][1]*M )^( 1/(prm[:βα][1]-1) );
 	val = β₀(s,t;prm=prm);
 
@@ -152,7 +152,7 @@ function ∂vβ₀(s::Float64,t::Float64;prm::DSymVFl=data())
 	return val
 end
 function ∂vβ(s::Float64,t::Float64;prm::DSymVFl=data(),
-	                           M::Float64=50.0)	
+	                           M::Float64=150.0)	
 	sₘ = prm[:βθ][1]*( prm[:βθ][1]/prm[:βα][1]*M )^( 1/(prm[:βα][1]-1) );
 	val = ∂vβ₀(s,t;prm=prm);
 
@@ -166,7 +166,7 @@ function γ₀(s::Float64,t::Float64;prm::DSymVFl=data())
 	return val
 end
 function γ(s::Float64,t::Float64;prm::DSymVFl=data(),
-		                 M::Float64=50.0)
+		                 M::Float64=150.0)
 	sₘ = prm[:γθ][1]*( prm[:γθ][1]/prm[:γα][1]*M )^( 1/(prm[:γα][1]-1) );
 	val = γ₀(s,t;prm=prm);
 
@@ -179,7 +179,7 @@ function ∂vγ₀(s::Float64,t::Float64;prm::DSymVFl=data())
 	return val
 end
 function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data(),
-	                           M::Float64=50.0)
+	                           M::Float64=150.0)
 	sₘ = prm[:γθ][1]*( prm[:γθ][1]/prm[:γα][1]*M )^( 1/(prm[:γα][1]-1) );
 	val = ∂vγ₀(s,t;prm=prm);
 

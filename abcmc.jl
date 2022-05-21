@@ -44,8 +44,8 @@ end
 Sample varied parameters like priors
 """
 function abcsmp!(prm::DSymVFl;
-		 prmrg::DSymVFl=mcdata()[1],
-		 prmvary::DSymBool=mcdata()[2],
+		 prmrg::DSymVFl=abcdata()[1],
+		 prmvary::DSymBool=abcdata()[2],
 		 rng::MersenneTwister=MersenneTwister())
 	flagfd = false;
 
@@ -77,130 +77,116 @@ function abcsmp!(prm::DSymVFl;
 	
 end
 
+""" 
+Pregenerate abcsamples in specified batch sizes to run embarassingly 
+parallel on supercomputer
+Each batch will have nsmp's each for a total of nsmp*nbatch many samples
+"""
+function abcpregen(nsmp::Int64,nbatch::Int64;
+		   prm::DSymVFl=data(),
+		   prmrg::DSymVFl=abcdata()[1],
+		   prmvary::DSymBool=abcdata()[2],
+		   rng::MersenneTwister=MersenneTwister())
+	vkeys = [mykey for mykey in keys(prm)];
+	Stemp = Matrix{Float64}(undef,length(vkeys),nsmp);
+
+	gen = [1,0]
+	@inbounds for k=1:nsmp*nbatch
+		if gen[2]!=nsmp
+			gen[2]+=1
+		else
+			gen[1]+=1; gen[2]=1;
+		end
+
+		abcsmp!(prm;prmrg=prmrg,prmvary=prmvary,rng=rng);
+		Snow = @view Stemp[:,gen[2]];
+		wrtprm!(prm,vkeys,Snow)
+
+		if gen[2]==nsmp
+			dftemp = DataFrame(hcat(vkeys,Stemp),:auto);
+			id=gen[1];
+			CSV.write("ABCsmp$id.csv",dftemp,writeheader=false);
+		end
+	end 
+	mysaverng(rng);
+end
 """
 Compute the ℓ² error (squared) between model prediction and data
+daily incidence
 """
 function ℓerr(ysol::Vector{Solℓvℓ};
 	      prm::DSymVFl=data(),
-	      yˢ::DStrVFl,yᵛ::DStrVFl,yⁱ::DStrVFl,
-	      ram::Vector{Float64}=Vector{Float64}(undef,9))
-	valyˢ = 0.0;
-	npts = length(yˢ["time"]);
-	taxis = [ysol[i].yˢ.tlvl.t₀[1] for i=1:length(ysol)]; 
-	@inbounds for k=1:npts
-		tnow = yˢ["time"][k];
-		ram[1] = yˢ["0-9"][k]; ram[2] = yˢ["10-19"][k]; ram[3] = yˢ["20-29"][k];
-		ram[4] = yˢ["30-39"][k]; ram[5] = yˢ["40-49"][k]; ram[6] = yˢ["50-59"][k];
-		ram[7] = yˢ["60-69"][k]; ram[8] = yˢ["70-79"][k]; ram[9] = yˢ["80+"][k];
-		
-		ℓ = myfindfirst(taxis,tnow);
-		ℓ = ℓ==1 ? 2 : ℓ;
-		ynow = myinterp(tnow,ysol[ℓ-1].yˢ,ysol[ℓ].yˢ);
-		ram[1] -= eval(ynow,5.0*365); ram[2] -= eval(ynow,15.0*365); ram[3] -= eval(ynow,25.0*365);
-		ram[4] -= eval(ynow,35.0*365); ram[5] -= eval(ynow,45.0*365); ram[6] -= eval(ynow,55.0*365);
-		ram[7] -= eval(ynow,65.0*365); ram[8] -= eval(ynow,75.0*365); ram[9] -= eval(ynow,90.0*365);
+	      df::DataFrame=CSV.read("ODH_snipdaily.csv",DataFrame))
+	npts = nrow(df);
+	taxis = [ysol[i].yˢ.tlvl.t₀[1] for i=1:length(ysol)]; 	
 
-		# scale density to unit interval
-		ram *= prm[:yˢrg][2];
+	val = 0.0;
+	# Compute effective population size for extracting model pred
+	# daily incidence
+	#  Total infections during this period
+	kT = sum(df[!,"daily_confirm"]);
 
-		valyˢ += ram.^2 |> sum;
+	#  ∫yⁱdt at s=0 by trapezoidal rule
+	∫yⁱdt = 0.0;
+	@inbounds for k=2:length(taxis)
+		∫yⁱdt += (ysol[k].yⁱ.ys[1]+ysol[k-1].yⁱ.ys[1])/2*(taxis[k]-taxis[k-1]);
 	end
-	# average to one column vector for comparing with yᵛ,yⁱ
-	valyˢ *= 1/9;
-	
-	valyᵛ = 0.0;
-	npts = length(yᵛ["time"]);
+	neff = kT/∫yⁱdt;
+
+	# Compute difference in daily incidence between model prediction and observed
 	@inbounds for k=1:npts
-		tnow = yᵛ["time"][k];
-		ℓ = myfindfirst(taxis,tnow);
-		ℓ = ℓ==1 ? 2 : ℓ;
-		ynow = myinterp(tnow,ysol[ℓ-1].yᵛ,ysol[ℓ].yᵛ);
-
-		ram2 = yᵛ["∂"][k]-eval(ynow,0.0);
-		# scale density to unit interval
-		ram2 *= prm[:yᵛrg][2];
-
-		valyᵛ += ram2^2;
-
-	end
-
-	valyⁱ = 0.0;
-	npts = length(yⁱ["time"]);
-	@inbounds for k=1:npts
-		tnow = yⁱ["time"][k];
+		tnow = k-1.0;
 		ℓ = myfindfirst(taxis,tnow);
 		ℓ = ℓ==1 ? 2 : ℓ;
 		ynow = myinterp(tnow,ysol[ℓ-1].yⁱ,ysol[ℓ].yⁱ);
 
-		ram2 = yⁱ["∂"][k]-eval(ynow,0.0);
-		# scale density to unit interval
-		ram2 *= prm[:yⁱrg][2];
-
-		valyᵛ += ram2^2;
+		val += ( df[!,"daily_confirm"][k]-neff*eval(ynow,0.0) )^2;
 	end
 
-	return valyˢ+valyᵛ+valyⁱ
+	return √(val/npts)
 end
 
 """
-Routine to run abc sampling
+Routine to run abc sampling. fsmp is the file output by abcpregen
+that you are using for samples. pos is optional flag to say where to
+pick up at (for ex if sheet had been partially run through)
 """
-function abcrun(nsmp::Int64;
-		rng::MersenneTwister=MersenneTwister(),flagrst::Bool=false,
-	        δprg::Float64=0.05)
-	# Load the data
-	dfyˢ = CSV.read("ODH_ys.csv",DataFrame);
-	dfyⁱ = CSV.read("ODH_yi.csv",DataFrame);
-	dfyᵛ = CSV.read("ODH_yv.csv",DataFrame);
+function abcrun(fsmp::String;
+	        δprg::Float64=0.05,
+		fODH::String="ODH_snipdaily.csv",
+		pos::Int64=1)
+	# Load the samples
+	dfS = CSV.read(fsmp,DataFrame,header=false);
+	nsmp = ncol(dfS)-1;
+	vkeys = Symbol.(dfS[:,1]);
 
-	ODHyˢ=Dict{String,Vector{Float64}}("time"=>(Float64.(dfyˢ[:,:time])),
-					"0-9"=>dfyˢ[:,"0-9"],"10-19"=>dfyˢ[:,"10-19"],
-					"20-29"=>dfyˢ[:,"20-29"],"30-39"=>dfyˢ[:,"30-39"],
-					"40-49"=>dfyˢ[:,"40-49"],"50-59"=>dfyˢ[:,"50-59"],
-					"60-69"=>dfyˢ[:,"60-69"],"70-79"=>dfyˢ[:,"70-79"],
-					"80+"=>dfyˢ[:,"80+"]);
-	ODHyᵛ=Dict{String,Vector{Float64}}("time"=>(Float64.(dfyᵛ[:,:time])),
-					"∂"=>dfyᵛ[:,"yv"]);
-	ODHyⁱ=Dict{String,Vector{Float64}}("time"=>(Float64.(dfyⁱ[:,:time])),
-					"∂"=>dfyⁱ[:,"yi"]);
-
-	# Initialize
-	if !flagrst
-		prm,vkeys,V = wrtprm();
-	else
-		dftemp = CSV.read("ABCsmp.csv",DataFrame,header=false);
-		vkeys = Symbol.(dftemp[:,1]);
-		prm,_ = rdprm(dftemp[!,end],vkeys);
-		rng = myloadrng();
+	# find pos of :ℓerr within vkeys
+	posℓ = 1;
+	while vkeys[posℓ]!=:ℓerr
+		posℓ+=1;
 	end
-	prmrg,prmvary = abcdata();
-	S = Matrix{Float64}(undef,length(vkeys),nsmp)
 
-	# Sample
-	ram = Vector{Float64}(undef,9);
+	# Load the data
+	dfODH = CSV.read(fODH,DataFrame);
+	select!(dfODH,["time","daily_confirm"]);
 
 	println("progress through abc sampling: 0.0/1.0 ...")
 	prg = 0.0;
-	@inbounds for i=1:nsmp
-		abcsmp!(prm;rng=rng,prmrg=prmrg,prmvary=prmvary);
-		
-		Snow = @view S[:,i];
-		wrtprm!(prm,vkeys,Snow);
-		CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
-		
-		ysol,_ = pdesolve(;prm=prm,flagprg=false); 
-		try 
-			prm[:ℓerr][1] = ℓerr(ysol;prm=prm,yˢ=ODHyˢ,yᵛ=ODHyᵛ,yⁱ=ODHyⁱ,ram=ram);
+	@inbounds for i=(pos+1):ncol(dfS)	
+		prm = rdprm(dfS[!,i],vkeys)[1];
+		ysol,_ = pdesolve(;prm=prm,flagprg=false);
+
+		try 	
+			dfS[posℓ,i] = ℓerr(ysol;prm=prm,df=dfODH);
 		catch
+			dfS[posℓ,i] = NaN;
 			@warn "simulation failed owing to resolutions and tolerances at sample $i"
 		end
 		
-		wrtprm!(prm,vkeys,Snow);
-		CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
-		# Partially save progress and output progess through independent samples and save rng
+		CSV.write(fsmp,dfS,writeheader=false,append=false);
+		# Partially save progress and output progess
 		while i/nsmp >= prg + δprg
-			#CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S[:,1:i],:auto)],writeheader=false,append=false);
-			mysaverng(rng);
+			#CSV.write(fsmp,dfS,writeheader=false,append=false);	
 			prg += δprg;
 			println("progress through abc sampling: $prg/1.0 ...");
 		end
@@ -208,8 +194,7 @@ function abcrun(nsmp::Int64;
 
 	# Save and exit
 	println("finished abc sampling ...");
-	CSV.write("ABCsmp.csv",[DataFrame("prm"=>vkeys) DataFrame(S,:auto)],writeheader=false,append=false);
-	mysaverng(rng);
+	CSV.write(fsmp,dfS,writeheader=false,append=false);
 
 	return
 end

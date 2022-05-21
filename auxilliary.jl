@@ -614,6 +614,15 @@ function RecipesBase.plot(s::Symbol;prm::DSymVFl=data())
 
 		p₁ = plot(saxis,fⁱaxis,labels="orig",linewidth=3,title="fⁱ",xlabel="s",ylabel="value");
 		plot!(p₁,nds,fⁱnds,labels="discrete",linewidth=3,linestyle=:dash);
+	elseif s==:Weibull
+		nds = LinRange(prm[:yⁱrg][1],prm[:yⁱrg][2],prm[:nnd][1]|>Int64);
+		Wβ = Weibull(prm[:βα][1],prm[:βθ][1]); Wγ = Weibull(prm[:γα][1],prm[:γθ][1]);
+
+		βs = [pdf(Wβ,s) for s in nds]; γs = [pdf(Wγ,s) for s in nds];
+		plot(nds,βs,linewidth=3,labels="β");
+		plot!(nds,γs,linewidth=3,labels="γ");
+		plot!(title="Infectiousness and Recovery Distributions",
+		      xlabel="days after infection",ylabel="density")
 	end
 end
 
