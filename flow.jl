@@ -536,8 +536,8 @@ function pdesolve(;prm::DSymVFl=data(),
 		Δt *= 2;
 
 		if ( (sol0.yˢ.∫yds[1]<-0.1)||(sol0.yᵛ.∫yds[1]<-0.1)||(sol0.yⁱ.∫yds[1]<-0.1)||
-		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] > 1.1+prm[:ρ][1])||
-		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] < 0.9+prm[:ρ][1]) ) 
+		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] > 1.075+prm[:ρ][1])||
+		      (sol0.yˢ.∫yds[1]+sol0.yᵛ.∫yds[1]+sol0.yⁱ.∫yds[1]+yʳ2x[1] < 0.925+prm[:ρ][1]) ) 
 			@warn "simulation failed at these tolerances"
 			break
 		end

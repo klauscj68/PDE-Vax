@@ -86,9 +86,13 @@ function abcpregen(nsmp::Int64,nbatch::Int64;
 		   prm::DSymVFl=data(),
 		   prmrg::DSymVFl=abcdata()[1],
 		   prmvary::DSymBool=abcdata()[2],
-		   rng::MersenneTwister=MersenneTwister())
+		   rng::MersenneTwister=MersenneTwister(),
+		   ndays::Int64=nrow(CSV.read("ODH_snipdaily.csv",DataFrame)))
 	vkeys = [mykey for mykey in keys(prm)];
 	Stemp = Matrix{Float64}(undef,length(vkeys),nsmp);
+
+	taxis = 0.0:1.0:(ndays-1)
+	Ttemp = fill(NaN,length(taxis),nsmp);
 
 	gen = [1,0]
 	@inbounds for k=1:nsmp*nbatch
@@ -106,8 +110,11 @@ function abcpregen(nsmp::Int64,nbatch::Int64;
 			dftemp = DataFrame(hcat(vkeys,Stemp),:auto);
 			id=gen[1];
 			CSV.write("ABCsmp$id.csv",dftemp,writeheader=false);
+			
+			dftemp = DataFrame(hcat(taxis,Ttemp),:auto);
+			CSV.write("ABCtrj$id.csv",dftemp,writeheader=false);
 		end
-	end 
+	end
 	mysaverng(rng);
 end
 """
@@ -118,7 +125,8 @@ function ℓerr(ysol::Vector{Solℓvℓ};
 	      prm::DSymVFl=data(),
 	      df::DataFrame=CSV.read("ODH_snipdaily.csv",DataFrame))
 	npts = nrow(df);
-	taxis = [ysol[i].yˢ.tlvl.t₀[1] for i=1:length(ysol)]; 	
+	taxis = [ysol[i].yˢ.tlvl.t₀[1] for i=1:length(ysol)]; ntpts = length(taxis);
+	Yᵢ = Vector{Float64}(undef,ntpts);
 
 	val = 0.0;
 	# Compute effective population size for extracting model pred
@@ -127,11 +135,11 @@ function ℓerr(ysol::Vector{Solℓvℓ};
 	kT = sum(df[!,"daily_confirm"]);
 
 	#  ∫yⁱdt at s=0 by trapezoidal rule
-	∫yⁱdt = 0.0;
-	@inbounds for k=2:length(taxis)
-		∫yⁱdt += (ysol[k].yⁱ.ys[1]+ysol[k-1].yⁱ.ys[1])/2*(taxis[k]-taxis[k-1]);
+	∫ᵀ₀yⁱdt = 0.0;
+	@inbounds for k=2:ntpts
+		∫ᵀ₀yⁱdt += (ysol[k].yⁱ.ys[1]+ysol[k-1].yⁱ.ys[1])/2*(taxis[k]-taxis[k-1]);
 	end
-	neff = kT/∫yⁱdt;
+	neff = kT/∫ᵀ₀yⁱdt;
 
 	# Compute difference in daily incidence between model prediction and observed
 	@inbounds for k=1:npts
@@ -139,11 +147,11 @@ function ℓerr(ysol::Vector{Solℓvℓ};
 		ℓ = myfindfirst(taxis,tnow);
 		ℓ = ℓ==1 ? 2 : ℓ;
 		ynow = myinterp(tnow,ysol[ℓ-1].yⁱ,ysol[ℓ].yⁱ);
-
-		val += ( df[!,"daily_confirm"][k]-neff*eval(ynow,0.0) )^2;
+		Yᵢ[k] = neff*eval(ynow,0.0);
+		val += ( df[!,"daily_confirm"][k]-Yᵢ[k] )^2;
 	end
 
-	return √(val/npts)
+	return √(val/npts),Yᵢ
 end
 
 """
@@ -151,12 +159,13 @@ Routine to run abc sampling. fsmp is the file output by abcpregen
 that you are using for samples. pos is optional flag to say where to
 pick up at (for ex if sheet had been partially run through)
 """
-function abcrun(fsmp::String;
-	        δprg::Float64=0.05,
+function abcrun(fsmp::String,ftrj::String;
+	        δprg::Float64=0.01,
 		fODH::String="ODH_snipdaily.csv",
 		pos::Int64=1)
 	# Load the samples
 	dfS = CSV.read(fsmp,DataFrame,header=false);
+	dfT = CSV.read(ftrj,DataFrame,header=false);
 	nsmp = ncol(dfS)-1;
 	vkeys = Symbol.(dfS[:,1]);
 
@@ -174,21 +183,24 @@ function abcrun(fsmp::String;
 	prg = 0.0;flagsave=true;
 	@inbounds for i=(pos+1):ncol(dfS)	
 		prm = rdprm(dfS[!,i],vkeys)[1];
-		ysol,_ = pdesolve(;prm=prm,flagprg=true);
+		ysol,_ = pdesolve(;prm=prm,flagprg=false);
 
 		try 	
-			dfS[posℓ,i] = ℓerr(ysol;prm=prm,df=dfODH);
+			dfS[posℓ,i],ram = ℓerr(ysol;prm=prm,df=dfODH);
+			dfT[:,i] = ram[1:nrow(dfT)];
 		catch
 			dfS[posℓ,i] = NaN;
 			@warn "simulation failed owing to resolutions and tolerances at sample $i"
 		end
 		
 		CSV.write(fsmp,dfS,writeheader=false,append=false);
+		CSV.write(ftrj,dfT,writeheader=false,append=false);
 		# Partially save progress and output progess
 		flagsave = true;
 		while (i-1)/nsmp >= prg + δprg
 			if flagsave
 				CSV.write(fsmp,dfS,writeheader=false,append=false);
+				CSV.write(ftrj,dfT,writeheader=false,append=false);
 			end
 			flagsave=false;
 			prg += δprg;
@@ -199,6 +211,7 @@ function abcrun(fsmp::String;
 	# Save and exit
 	println("finished abc sampling ...");
 	CSV.write(fsmp,dfS,writeheader=false,append=false);
+	CSV.write(ftrj,dfT,writeheader=false,append=false);
 
 	return
 end
