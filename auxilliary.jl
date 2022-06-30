@@ -519,6 +519,113 @@ function plotbd(S::Vector{Solℓvℓ};prm=data())
 end
 
 """
+When given several different solutions, separate out their yᵛ,yⁱ boundary errors
+into their own plots and plot the different values on same plot. This routine is
+natural to use for showing solution convergence over decreasing mesh sizes. 
+
+δprm = Vector of dictionaries matching components of S, whose entries are to override
+standard prm with the values run for that simulation.
+"""
+function plotbd(S::Vector{Vector{Solℓvℓ}},δprm::Vector{Dict{Symbol,Vector{Float64}}}
+		;prm=data(),
+		labels::Vector{String}=["y"*string(i) for i=1:length(S)])
+	@assert length(S) == length(labels) "The number of labels must match passed number of solutions"
+	# For distinguising several series
+	lnopt = [:solid, :dash, :dot, :dashdot, :dashdotdot];
+	mkopt = [:none, :auto, :circle, :rect, :star5, :diamond, :hexagon, :cross, 
+		 :xcross, :utriangle, :dtriangle, :rtriangle, :ltriangle, :pentagon, 
+		 :heptagon, :octagon, :star4, :star6, :star7, :star8, :vline, :hline, 
+		 :+, :x]; 
+	# Plot formatting
+	#  Finding that to get right output dimensions and font sizes for gr have to manually
+	#  compute scaling factors based on an observed print output
+	λfig = 100*7.5/10.42; λfont = 12/18; #scaling factors
+	
+	#  Final output two panel figure dimensions
+	figwdth = 7.45/2; fighght = 3.25; # inches
+	
+	#  Final output figure fontsizes
+	figtickfontsize = 12; figguidefontsize = 14; figtitlefontsize = 16; figlegendfontsize=8;
+
+	# Initialize plots
+	p₁ = plot(); p₂ = plot(); p₃ = plot(); p₄ = plot();
+
+	# Plot the solution bd errors
+	for ℓ=1:length(S)
+		# override prm with values of this simulation
+		if !isempty(keys(δprm[ℓ]))
+			for key in keys(δprm[ℓ])
+				prm[key][:] = δprm[ℓ][key];
+			end
+			data!(prm);
+		end
+
+		n = length(S[ℓ]);
+		taxis = [S[ℓ][i].t₀[1] for i=1:n];
+
+		yˢ = fill(0.0,n);
+		yᵛ = similar(yˢ); yⁱ = similar(yˢ);
+
+		# allocate for nonlocals and compute theory ∂-values
+		nls = nonlocalsinit(S[ℓ][1].t₀[1];prm=prm);
+
+		@inbounds for i=1:n
+			nonlocals!(S[ℓ][i];temp=nls,prm=prm);
+
+			yᵛ[i] = nls[:∫λyˢ].∫yds[1];
+			yⁱ[i] = (nls[:∫yˢ].∫yds[1]+nls[:∫Imαyᵛ].∫yds[1])*nls[:∫βyⁱ].∫yds[1];
+
+		end
+
+		yˢaerr = abs.([ S[ℓ][i].yˢ.ys[1]-yˢ[i] for i=1:n]);
+		yᵛaerr = abs.([ S[ℓ][i].yᵛ.ys[1]-yᵛ[i] for i=1:n]);
+		yⁱaerr = abs.([ S[ℓ][i].yⁱ.ys[1]-yⁱ[i] for i=1:n]);
+
+		yᵛ = [ (yᵛ[i] >= prm[:atol][1] ? yᵛ[i] : prm[:atol][1]) for i=1:n];
+		yⁱ = [ (yⁱ[i] >= prm[:atol][1] ? yⁱ[i] : prm[:atol][1]) for i=1:n];
+
+		yˢrerr = yˢ;
+		yᵛrerr = yᵛaerr./yᵛ;
+		yⁱrerr = yⁱaerr./yⁱ;
+
+		yˢaerr *= (prm[:yˢrg][2]-prm[:yˢrg][1]);
+		yᵛaerr *= (prm[:yᵛrg][2]-prm[:yᵛrg][1]);
+		yⁱaerr *= (prm[:yⁱrg][2]-prm[:yⁱrg][1]);
+
+		plot!(p₁,taxis,yᵛaerr,labels=labels[ℓ],linewidth=3,linestyle=lnopt[ℓ%5+1]);
+		plot!(p₂,taxis,yⁱaerr,labels=labels[ℓ],linewidth=3,linestyle=lnopt[ℓ%5+1]);
+		plot!(p₃,taxis,yᵛrerr,labels=labels[ℓ],linewidth=3,linestyle=lnopt[ℓ%5+1]);
+		plot!(p₄,taxis,yⁱrerr,labels=labels[ℓ],linewidth=3,linestyle=lnopt[ℓ%5+1]);
+
+	end
+	plot!(p₁,xlabel="time (days)",ylabel="absolute error",title="yᵥ implicit boundary",
+	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
+	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	plot!(p₂,xlabel="time (days)",ylabel="absolute error",title="yᵢ implicit boundary",
+	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
+	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	plot!(p₃,xlabel="time (days)",ylabel="relative error",title="yᵥ implicit boundary",
+	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
+	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	plot!(p₄,xlabel="time (days)",ylabel="relative error",title="yᵢ implicit boundary",
+	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
+	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+
+	p₅ = deepcopy(p₁); p₆ = deepcopy(p₂); p₇ = deepcopy(p₃); p₈ = deepcopy(p₄);
+	plot!(p₅,xlabel=""); plot!(p₆,xlabel="",ylabel=""); plot!(p₇,title=""); plot!(p₈,ylabel="",title="");
+
+	lay = @layout [a b;c d];
+	p₉ = plot(p₅,p₆,p₇,p₈,layout=lay,size=(figwdth*2*λfig,fighght*λfig));
+
+	return p₉,p₁,p₂,p₃,p₄
+
+end
+
+"""
 Plot the given equation coefficient with its various approximations
 """
 function RecipesBase.plot(s::Symbol;prm::DSymVFl=data())
