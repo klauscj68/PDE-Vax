@@ -1,4 +1,4 @@
-using Plots,Measures,Random,CSV,DataFrames,Statistics
+using Plots,Measures,Random,CSV,DataFrames,Statistics,Printf
 gr();
 ## Suite of ancillary routines for solving the vaccination PDE system
 # Coordinate system for numerical routines are (s,t)
@@ -598,28 +598,40 @@ function plotbd(S::Vector{Vector{Solℓvℓ}},δprm::Vector{Dict{Symbol,Vector{F
 		plot!(p₄,taxis,yⁱrerr,labels=labels[ℓ],linewidth=3,linestyle=lnopt[ℓ%5+1]);
 
 	end
+	# Small routine for standardizing the yaxis display 
+	function yfmtr(x::Real)
+		if x==0
+			return "0.0e00"
+		end
+		snew = @sprintf "%1.1e" x
+		return snew
+	end
 	plot!(p₁,xlabel="time (days)",ylabel="absolute error",title="yᵥ implicit boundary",
 	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
 	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
-	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft,
+	      yformatter=yfmtr);
 	plot!(p₂,xlabel="time (days)",ylabel="absolute error",title="yᵢ implicit boundary",
 	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
 	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
-	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft,
+	      yformatter=yfmtr);
 	plot!(p₃,xlabel="time (days)",ylabel="relative error",title="yᵥ implicit boundary",
 	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
 	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
-	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft,
+	      yformatter=yfmtr);
 	plot!(p₄,xlabel="time (days)",ylabel="relative error",title="yᵢ implicit boundary",
 	      guidefontsize=round(figguidefontsize*λfont),tickfontsize=round(figtickfontsize*λfont),
 	      titlefontsize=round(figtitlefontsize*λfont),legendfontsize=round(figlegendfontsize*λfont),
-	      size=(figwdth*λfig,fighght*λfig),legend=:topleft);
+	      size=(figwdth*λfig,fighght*λfig),legend=:topleft,
+	      yformatter=yfmtr);
 
 	p₅ = deepcopy(p₁); p₆ = deepcopy(p₂); p₇ = deepcopy(p₃); p₈ = deepcopy(p₄);
 	plot!(p₅,xlabel=""); plot!(p₆,xlabel="",ylabel=""); plot!(p₇,title=""); plot!(p₈,ylabel="",title="");
 
 	lay = @layout [a b;c d];
-	p₉ = plot(p₅,p₆,p₇,p₈,layout=lay,size=(figwdth*2*λfig,fighght*λfig));
+	p₉ = plot(p₅,p₆,p₇,p₈,layout=lay,size=(figwdth*2*λfig,2*fighght*λfig));
 
 	return p₉,p₁,p₂,p₃,p₄
 
