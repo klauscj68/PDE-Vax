@@ -37,6 +37,7 @@ function data()
 	prm[:γα]=[6.634354565132854];
 
 	# λ parameters
+	#  Currently this parameter is not used anywhere
 	prm[:λ]=[1.5];
 
 	# mass of t₀ infected
@@ -187,6 +188,7 @@ function ∂vγ(s::Float64,t::Float64;prm::DSymVFl=data(),
 	return val
 end
 
+# The curves below are matched to the b-spline curves pulled from ODH/CDC data
 function λ(s::Float64,t::Float64;prm::DSymVFl=data())
 	syr = s/365;
 	val = ζδρ(syr,20.0,59.0)*( 0.002*mynrm(t,60.0,10.0)+0.002*mynrm(t,95.0,7.5) );
@@ -212,7 +214,7 @@ end
 #%% Initial data
 function fˢ(s::Float64;prm::DSymVFl=data())
 	syr = s/365;
-	val = prm[:fˢη][1]*ζδρ(syr,2.0,98.0;δ=0.25,ρ=0.25);
+	val = prm[:fˢη][1]*ζδρ(syr,2.0,99.0;δ=0.05,ρ=0.05)*Ηδρ(85-syr;δ=15.0,ρ=0.1);
 
 	return val
 end

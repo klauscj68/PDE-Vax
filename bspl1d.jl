@@ -1,4 +1,5 @@
 # Collection of routines for computing with 1d S^r_d(Δ) bsplines on an interval
+# Routines based on Schumaker Spline Functions: Computational Methods
 using Plots,Measures
 gr();
 VFl = Vector{Float64};
