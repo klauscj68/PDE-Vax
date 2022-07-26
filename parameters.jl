@@ -24,24 +24,24 @@ function data()
 
 	# α parameters
 	prm[:αL] = [14.0];
-	prm[:αeff] = [0.8254768670219148];
+	prm[:αeff] = [0.9698334727742906];
 
 	# β parameters
 	#  mean of 3.1
-	prm[:βθ]=[13.503742943767056];
-	prm[:βα]=[5.183531439323711];
+	prm[:βθ]=[13.503792220531302];
+	prm[:βα]=[5.238644772185896];
 
 	# γ parameters
 	#  mean of 7.1
-	prm[:γθ]=[13.573904667690732];
-	prm[:γα]=[6.634354565132854];
+	prm[:γθ]=[13.617999656279881];
+	prm[:γα]=[6.052065267527739];
 
 	# λ parameters
 	#  Currently this parameter is not used anywhere
 	prm[:λ]=[1.5];
 
 	# mass of t₀ infected
-	prm[:ρ] = [0.03356383662005267];
+	prm[:ρ] = [0.04476143286480499];
 
 	# spatial discretization
 	prm[:nnd] = [2500.0];
