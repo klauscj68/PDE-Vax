@@ -511,8 +511,7 @@ function pdesolve(;prm::DSymVFl=data(),
 			flagfd = true;
 		end
 
-		# If any values were negative, set to 0. Since the true solution is nonnegative (confirm ∂-flow)
-		# this move should lower the local error at each iteration?
+		# If any values were negative, set to 0. 
 		@inbounds for i=1:nnd
 			sol2x.yˢ.ys[i] = sol2x.yˢ.ys[i]>=0 ? sol2x.yˢ.ys[i] : 0.0;
 			sol2x.yᵛ.ys[i] = sol2x.yᵛ.ys[i]>=0 ? sol2x.yᵛ.ys[i] : 0.0;

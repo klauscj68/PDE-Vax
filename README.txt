@@ -1,5 +1,6 @@
 This repository contains the codes used in our PDE DSA paper applied to 
-the COVID epidemic in Ohio from Nov 2020-Jan 2021. 
+the COVID epidemic in Ohio from Nov 2020-Jan 2021. It was written in 
+Julia v1.7.3. 
 
 ### Installing the environment
 The Julia environment needed to run the code is setup using the Project and
@@ -8,9 +9,9 @@ package manager and using the activate and instantiate commands. See for
 example
 https://pkgdocs.julialang.org/v1/environments/#Using-someone-else's-project.
 
-Jupyter notebooks should automatically load installed pacakges without 
-needing to activate the environment, although additional pacakges may need
-to be instantiated.
+Jupyter notebooks should automatically load installed packages without 
+needing to activate the environment, although additional packages may need
+to be installed.
 
 ### Running a single PDE DSA simulation
 The simplest way to become familiar with the code is to run a simulation
@@ -18,7 +19,7 @@ from the jupyter notebook solve_pdedsa.ipynb. The notebook contains
 instructions on how to run the simulation. A sample output file 
 solve_pdedsa_output.html is also provided.
 
-Simulations may also be run in REPL by inputing the jupyter commands into
+Simulations may also be run in REPL by inputting the jupyter commands into
 the julia command line. Alternative equation coefficients may be specified
 by modifying the appropriate function in parameters.jl. 
 
@@ -31,7 +32,7 @@ The error is computed in ℓerr() in abcmc.jl.
 
 To generate the samples, one manually calls abcpregen() with the number of 
 samples in a single batch and the number of batches. This is how 
-simulations may be run embarassingly parallel. The code generates # batch 
+simulations may be run embarrassingly parallel. The code generates # batch 
 many csv files for both sample parameter values and incidence trajectories.
 
 Then to compute the ABC sample trajectories, one calls abcrun() with 
